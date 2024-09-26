@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - FAQ Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .dark-mode {
+            background-color: #343a40; /* Dark background for the whole page */
+            color: white; /* Text color for dark mode */
+        }
+        .dark-mode .card {
+            background-color: #495057; /* Darker card background */
+            color: white; /* Text color for the card */
+        }
+        .dark-mode input {
+            background-color: #495057; /* Dark input background */
+            color: white; /* Input text color */
+            border: 1px solid #ced4da; /* Keep the border visible */
+        }
+        .dark-mode input::placeholder {
+            color: #adb5bd; /* Light gray placeholder text */
+        }
+        .dark-mode .btn {
+            background-color: #007bff; /* Bootstrap primary color */
+            color: white;
+        }
+        .dark-mode .btn-secondary {
+            background-color: #6c757d; /* Secondary button color */
+        }
+        .success-check {
+            color: green;
+            font-size: 2rem;
+            display: none; /* Hide by default */
+            transition: display 0.2s ease-in-out; /* Smooth appearance */
+        }
+        .error-cross {
+            display: none;
+            color: red;
+            font-size: 3rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <button id="theme-toggle" class="btn btn-secondary mb-3">Switch theme</button>
+                <div class="card">
+                    <div class="card-header bg-primary text-white text-center">
+                        <h4>Login into your account</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="login-form" action="/token" method="POST">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+                            <div class="d-grid position-relative">
+                                <button type="submit" class="btn btn-primary">Login</button>
+                                <div class="success-check position-absolute" style="top: -25px; right: 10px;">&#10004;</div> <!-- Green checkmark -->
+                                <div class="error-cross position-absolute" style="top: -25px; right: 10px;">&#10060;</div> <!-- Red cross -->
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const body = document.body;
+
+        themeToggleBtn.addEventListener('click', function () 
+        {
+            body.classList.toggle('dark-mode');
+            themeToggleBtn.textContent = body.classList.contains('dark-mode') ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+        });
+
+        // Login form submission
+        document.getElementById("login-form").addEventListener("submit", async function(event) 
+        {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const loginData = new URLSearchParams(formData).toString();
+
+            // Get both checkmark and cross elements
+            const successCheck = document.querySelector(".success-check");
+            const errorCross = document.querySelector(".error-cross");
+
+            // Hide both symbols initially
+            successCheck.style.display = "none";
+            errorCross.style.display = "none";
+
+            try
+            {
+                const response = await fetch("/token", 
+                {
+                    method: "POST",
+                    headers: 
+                    {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: loginData
+                });
+
+                if (response.ok) 
+                {
+                    const data = await response.json();
+                    localStorage.setItem("access_token", data.access_token);
+
+                    // Show the green checkmark
+                    successCheck.style.display = "block";
+                    
+                    // Ensure the token is stored before redirecting
+                    setTimeout(() => {
+                        window.location.href = "/question-page";  // Redirect to the question page after login
+                    }, 1000); // 1 second delay to show the checkmark              
+                }
+                else 
+                {
+                    // Show the red cross if login failed
+                    errorCross.style.display = "block";
+                    alert("Login failed! Please check your credentials!");
+                    
+                    // Automatically refresh the page after 3 seconds
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3000);
+                }
+            } 
+            catch (error) 
+            {
+                alert("An error occurred! Please try again after page is refreshed!");
+            
+                // Automatically refresh after 2 seconds
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            }
+        });
+    </script>
+</body>
+</html>

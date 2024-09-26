@@ -1,0 +1,13 @@
+celery[redis]
+fastapi[all]
+jinja2
+uvicorn
+langchain
+langchain-community
+langchain_openai
+numpy
+openai
+python-dotenv
+python-multipart
+python-jose[cryptography]
+psycopg2-binary

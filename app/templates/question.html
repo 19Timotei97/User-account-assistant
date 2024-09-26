@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ Assistant</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Custom CSS for better presentation */
+        #response {
+            display: none; /* Hide the response initially */
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        #response p {
+            margin: 5px 0;
+        }
+        .highlight {
+            background-color: #e0f7fa;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        /* Loading indicator style */
+        #loading {
+            display: none; /* Hide the loading indicator initially */
+            text-align: center;
+            margin-top: 20px;
+        }
+        /* Spinner style */
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 5px solid #f3f3f3; /* Light gray */
+            border-top: 5px solid #3498db; /* Blue */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: auto; /* Center the spinner */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">FAQ Assistant</h1>
+        <form id="ask-question-form" action="/ask-question" method="POST">
+            <div class="form-group">
+                <label for="user_question">Ask your question:</label>
+                <input type="text" id="user_question" name="user_question" class="form-control" placeholder="e.g.: How do I reset my password?" required>
+            </div>
+            <input type="submit" value="Submit" class="btn btn-success btn-block">
+        </form>
+
+        <!-- Loading indicator -->
+        <div id="loading">
+            <div class="spinner"></div>
+            <strong>Loading...</strong>
+        </div>
+
+        <!-- Pre-rendered response structure with placeholders -->
+        <div id="response" class="mt-4">
+            <h3>Answer:</h3>
+            <p><strong>Source:</strong> <span id="response-source" class="highlight">Waiting for response...</span></p>
+            <p><strong>Matched Question:</strong> <span id="response-matched-question" class="highlight">---</span></p>
+            <p><strong>Answer:</strong> <span id="response-answer" class="highlight">---</span></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("ask-question-form").addEventListener("submit", async function(event) 
+        {
+            event.preventDefault();
+            
+            // Retrieve token from localStorage
+            const token = localStorage.getItem("access_token");
+
+            if (!token) 
+            {
+                alert("You are not logged in! Please log in and try again!");
+                window.location.href = "/";
+                return;
+            }
+            
+            const formData = new FormData(event.target);
+
+            // Clear any previous response and show the structure
+            document.getElementById("response-source").innerHTML = "Waiting for response...";
+            document.getElementById("response-matched-question").innerHTML = "---";
+            document.getElementById("response-answer").innerHTML = "---";
+            document.getElementById("response").style.display = "block";
+
+            // Show loading indicator
+            document.getElementById("loading").style.display = "block";
+    
+            try
+            {
+                const response = await fetch("/ask-question", {
+                    method: "POST",
+                    headers: 
+                    {
+                        "Authorization": `Bearer ${token}`, // Include token in Authorization header
+                        "Content-Type": "application/json" // Ensure correct content type
+                    },
+                    body: JSON.stringify({ user_question: formData.get('user_question') })  // Sending as JSON
+                });
+
+                // Hide loading indicator
+                document.getElementById("loading").style.display = "none";
+    
+                if (response.ok) 
+                {
+                    const responseData = await response.json(); // Expect JSON response
+
+                    // Update the response elements with the data
+                    document.getElementById("response-source").innerHTML = responseData.source;
+                    document.getElementById("response-matched-question").innerHTML = responseData.matched_question;
+                    document.getElementById("response-answer").innerHTML = responseData.answer;
+                } 
+                else 
+                {
+                    alert("Request failed. Please check your credentials and try again!");
+                    window.location.href = "/";
+                }
+            } 
+            catch (error)
+            {
+                // Hide loading indicator
+                document.getElementById("loading").style.display = "none";
+
+                alert("An unknown error occurred! Please try again later!");
+                window.location.href = "/";
+            }
+        });
+    </script>
+</body>
+</html>

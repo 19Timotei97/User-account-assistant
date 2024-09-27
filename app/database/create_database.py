@@ -42,7 +42,7 @@ def create_database_if_not_exists() -> None:
 
     :return: None
     """
-    db_name = os.getenv('POSTGRES_DB', 'faq_embeddings_db')
+    db_name = os.getenv('POSTGRES_DB')
 
     # Connect to the default database (postgres)
     try:
@@ -56,15 +56,12 @@ def create_database_if_not_exists() -> None:
             # Allow database creation
             conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
             
-            # Use the cursor to execute SQL transactions
             with conn.cursor() as curs:
                 curs.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
                 exists = curs.fetchone()
                 
                 if not exists:
-                    # Create the database query using psycopg2.sql.SQL, to prevent SQL injection
-                    db_creation_query = psycopg2.sql.SQL("CREATE DATABASE {}").format(psycopg2.sql.Identifier(db_name))
-                    curs.execute(db_creation_query)
+                    curs.execute(f"CREATE DATABASE {psycopg2.sql.Identifier(db_name)}")
                     logging.info(f"Database {db_name} created successfully!")
                 else:
                     logging.info(f"Database {db_name} already exists!")

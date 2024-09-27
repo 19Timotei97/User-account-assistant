@@ -9,5 +9,5 @@ numpy
 openai
 python-dotenv
 python-multipart
-python-jose[cryptography]
+PyJWT
 psycopg2-binary

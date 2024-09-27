@@ -1,6 +1,6 @@
 # Contextual FAQ Assistant
 
-![Image](screenshots\contextual_FAQ.gif)
+![Image](screenshots/contextual_FAQ.gif)
 
 ## Important disclaimer!!
 If you want to run the app, you **MUST** define the environment variables inside the .env.example. After that, you can rename it to _.env_ and simply run _docker-compose up --build_ and it _should_ :) work with no issues.
@@ -12,27 +12,27 @@ It uses a Postgres database to store and retrieve embeddings of a series of prov
 
 A simple HTML page handles the login and authentication of the user (for testing purposes, I've used the _username_ "user" and the _password_ "test"); should this app be used in a production environment, **MUCH** better user management and password best practices need to be implemented.
 
-![Image](screenshots\login_page.PNG)
+![Image](screenshots/login_page.PNG)
 
 I've tried to implement a full dark mode switcher, but I only managed to change the login card theme. You can understand then that I'm not a Web developer, nor that I try to become one.
 
-![Image](screenshots\login_page_dark_mode.PNG)
+![Image](screenshots/login_page_dark_mode.PNG)
 
 After the user is logged in, he can start question the assistant with IT questions. A LangChain RunnableBranch is used to differentiate IT from NON-IT questions, but something stops it from being **extremely accurate**, as much prompt engineering and template instructions I've implemented.
 
-![Image](screenshots\main_page.PNG)
+![Image](screenshots/main_page.PNG)
 
 It can answer IT questions pretty well, as seen from the following screenshot, as it detects that a question should be answered using the local database:
 
-![Image](screenshots\it_qa.PNG)
+![Image](screenshots/it_qa.PNG)
 
 It can also prompt the OpenAI model when it doesn't retrieve a close enough embedding:
 
-![Image](screenshots\openai_qa.PNG)
+![Image](screenshots/openai_qa.PNG)
 
 But it can fail to completely refuse to respond to non IT-related questions (still something that I have to look into), even though the LangChain... ugh.. chain should deal with these kind of questions.
 
-![Image](screenshots\fail_qa.PNG)
+![Image](screenshots/fail_qa.PNG)
 
 
 ## Project structure
@@ -87,7 +87,7 @@ When it comes to the folder structure, I've tried to keep it as logical and clea
 
 2. The **celery_config** folder defines the _Celery_ app, mainly the _tasks.py_ script defining and configuring it. Having used it only for adding and updating embeddings asynchronously, it only autodiscovers the those tasks. I've used Redis as the backend message broker. It's also my first time using that, so I've learned something new :)
 
-![Image](screenshots\celery_async.PNG)
+![Image](screenshots/celery_async.PNG)
 
 3. The **database** folder deals with everything about the _PostgreSQL_ database, used for _info and embedding storage_. Since I've only wanted to create the PoC for such a complex app, I've only used the database for this, and not for user data storage (username, password, email etc.) Of course, this should be done in a production environment, but I think it will suffice for this assignment. I would personally used a vector database, like _Chroma_ or _Pinecone_ for the embeddings, but since we would also need to retrieve the answer, I understand the choice (even though the metadata of one of those options would work too, I think). The scripts included in this folder are responsible for:
 
@@ -97,7 +97,7 @@ When it comes to the folder structure, I've tried to keep it as logical and clea
 
     3.3 Managing the _collections_, should this is desired. I didn't used this script, since I only dealt with a single collection, but should more be needed, the implementation is there.
 
-![Image](screenshots\postgresql.PNG)
+![Image](screenshots/postgresql.PNG)
 
 4. The **services** folder is responsible with:
 

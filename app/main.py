@@ -1,7 +1,6 @@
 import os
 import logging
 import asyncio
-import numpy as np
 
 # Package imports
 from datetime import timedelta
@@ -16,16 +15,16 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from psycopg2 import DatabaseError
 from dotenv import load_dotenv
-from jose import PyJWTError
+from jwt import PyJWTError
 from requests import RequestException
 
 # Local files imports
 from auth.auth import Token, TokenData, create_access_token, get_token
 from database.create_database import create_database_if_not_exists, setup_database
-from database.manage_database import get_embeddings_from_collection, add_embeddings_to_db, update_embeddings_in_db
+from database.manage_database import search_for_similarity_in_db, add_embeddings_to_db, update_embeddings_in_db
 from services.llm_service import OpenAI_Responder
 from services.embeddings_service import OpenAIEmbeddingsService, EmbeddingComputationError
-from utils.utils import search_for_similarity, get_openai_responder, authenticate_user, get_faq_collection_name, retrieve_locally_stored_FAQ
+from utils.utils import get_openai_responder, authenticate_user, get_faq_collection_name, retrieve_locally_stored_FAQ
 
 
 """
@@ -234,52 +233,48 @@ async def ask_question(
         return JSONResponse(content={"error": "No question provided"}, status_code=400)
 
     try:
+        user_question_str_representation = user_question.user_question
+
         # Retrieve the initial collection name
         faq_collection_name = get_faq_collection_name()
 
         # Get an embedding of the user's question
-        question_embedding = embeddings_service.compute_embedding(user_question)            
+        question_embedding = embeddings_service.compute_embedding(user_question_str_representation)
+
+         # Perform similarity search in the database using the pgvector extension
+        most_similar_result = search_for_similarity_in_db(question_embedding, faq_collection_name)
+
+        if most_similar_result:
+            matched_question, answer, similarity_score = most_similar_result
+
+            # Check to see if the similarity is at least equal to the threshold
+            if similarity_score >= similarity_threshold:
+                # Optional: Update the embedding if needed
+                update_embeddings_in_db.delay([(matched_question, answer, faq_collection_name)])
+
+                # Create the required response structure and return it
+                response_data = {
+                    "source": "local",
+                    "matched_question": matched_question,
+                    "answer": answer
+                }
+
+            else:
+                # If the similarity is below the threshold, return the OpenAI response
+                openai_response = openai_responder.get_response(user_question_str_representation)
+
+                response_data = {
+                    "source": "openai",
+                    "matched_question": "N/A",
+                    "answer": openai_response
+                }
         
-        # Retrieve the prompts and their embeddings from the database
-        # The results are in the form (contents (question), embedding and answers)
-        resulted_local_faq = get_embeddings_from_collection(faq_collection_name)
-
-        # Retrieve each components from the results
-        contents = [result[0] for result in resulted_local_faq]
-        embeddings = [np.array(result[1]) for result in resulted_local_faq]
-        answers = [result[2] for result in resulted_local_faq]
-        
-        # Retrieve the most similar question index and the similarity score
-        most_similar_index, similarity_score = search_for_similarity(question_embedding, embeddings)
-
-        # Check to see if the similarity is at least equal to the threshold
-        if similarity_score >= similarity_threshold:
-
-            matched_question = contents[most_similar_index]
-            answer = answers[most_similar_index]
-
-            # Optional: Update the embedding if needed
-            update_embeddings_in_db.delay([(matched_question, answer, faq_collection_name)])
-
-            # Create the required response structure and return it
-            response_data = {
-                "source": "local",
-                "matched_question": matched_question,
-                "answer": answer
-            }
-
-        else:
-            # If the similarity is below the threshold, return the OpenAI response
-            openai_response = openai_responder.get_response(user_question)
-
-            response_data = {
-                "source": "openai",
-                "matched_question": "N/A",
-                "answer": openai_response
-            }
-        
-        # Queue background task to add/update embeddings in the background
-        add_embeddings_to_db.delay([(user_question, response_data['answer'], faq_collection_name)])
+            # Queue background task to add/update embeddings in the background
+            add_embeddings_to_db.delay([(
+                user_question_str_representation, 
+                response_data['answer'], 
+                faq_collection_name
+            )])
         
         return JSONResponse(content=response_data)
     
@@ -287,21 +282,21 @@ async def ask_question(
     # The embedding adding and update methods already catch SPECIFIC exceptions
     # Here I just add an extra layer of error handling
     except DatabaseError as database_excep:
-        logging.error(f"Database error: {database_excep}")
+        logging.error(f"Database error in ask-question route: {database_excep}")
         raise HTTPException(status_code=500, detail="Database error occurred while processing the question")
     
     except EmbeddingComputationError as embed_excep:
-        logging.error(f"Embedding computation error: {embed_excep}")
+        logging.error(f"Embedding computation error in ask-question route: {embed_excep}")
         raise HTTPException(status_code=500, detail=str(embed_excep))
 
     except RequestException as api_excep:
-        logging.error(f"OpenAI API request failed: {api_excep}")
+        logging.error(f"OpenAI API request failed in ask-question route: {api_excep}")
         raise HTTPException(status_code=502, detail="Failed to connect to external API!")
 
     except ValueError as value_excep:
-        logging.error(f"Value error while processing the question: {value_excep}")
+        logging.error(f"Value error while processing the question in ask-question route: {value_excep}")
         raise HTTPException(status_code=400, detail="Invalid input or value error!")
 
     except Exception as http_excep:
-        logging.error(f"Unhandled exception: {http_excep}")
+        logging.error(f"Unhandled exception in ask-question route: {http_excep}")
         raise HTTPException(status_code=500, detail="Internal server error!")

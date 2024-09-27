@@ -1,5 +1,5 @@
-# Use Python 3.8 alpine image as a base
-FROM python:3.8-alpine
+# Use Python 3.8 slim image as a base
+FROM python:3.8-slim
 
 # Create a non-root user
 RUN adduser --disabled-password --gecos '' --shell /bin/sh appuser
@@ -27,5 +27,4 @@ USER appuser
 EXPOSE 8080
 
 # Run main.py when the container launches
-ENTRYPOINT ["uvicorn", "main:app"]
-CMD ["--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

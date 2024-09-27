@@ -4,7 +4,7 @@ import json
 import numpy as np
 
 # Package imports
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from psycopg2.sql import SQL
 from psycopg2.extras import execute_values, execute_batch
 from psycopg2.errors import DatabaseError, InterfaceError
@@ -189,6 +189,40 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
         raise DatabaseOperationError(f"Unexpected error occurred: {update_excep}")
 
 
+def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) -> Tuple[Optional[str], Optional[str], float]:
+    """
+    Searches for the most similar embedding to the query embedding directly in the database.
+    
+    :param query_embedding: The embedding of the query to search for.
+    :param collection: The collection to search within.
+    :return: The matched content, answer, and similarity score if a match is found; otherwise None.
+    """
+    try:
+        with create_db_connection() as conn:
+            with conn.cursor() as curs:
+                # Query to perform similarity search using pgvector
+                search_query = """
+                SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
+                FROM embeddings
+                WHERE collection = %s
+                ORDER BY similarity DESC
+                LIMIT 1;
+                """
+                # Execute the query with the query_embedding and collection as parameters
+                curs.execute(search_query, (query_embedding, collection))
+                result = curs.fetchone()
+
+                if result:
+                    matched_content, matched_answer, similarity_score = result
+                    return matched_content, matched_answer, similarity_score
+
+    except (DatabaseError, InterfaceError) as database_exception:
+        logging.error(f"Error searching for similarity in the database: {database_exception}")
+        raise DatabaseOperationError(f"Failed to search for similarity: {database_exception}")
+
+    return None
+
+
 def delete_embedding_from_db(content: str, collection: str) -> None:
     """
     Deletes the embedding from the database.
@@ -200,14 +234,14 @@ def delete_embedding_from_db(content: str, collection: str) -> None:
     try:
         with create_db_connection() as conn:
             with conn.cursor() as curs:
-                delete_embedding_query = SQL(
-                    "DELETE FROM embeddings WHERE content = {} AND collection = {}").format(content, collection)
-                curs.execute(delete_embedding_query)
+                # delete_embedding_query = SQL(
+                #     "DELETE FROM embeddings WHERE content = {} AND collection = {}").format(content, collection)
+                # curs.execute(delete_embedding_query)
 
-                # curs.execute(
-                #     "DELETE FROM embeddings WHERE content = %s AND collection = %s",
-                #     (content, collection)
-                # )
+                curs.execute(
+                    "DELETE FROM embeddings WHERE content = %s AND collection = %s",
+                    (content, collection)
+                )
                 conn.commit()
     
     except (DatabaseError, InterfaceError) as database_exception:

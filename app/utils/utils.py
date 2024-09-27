@@ -41,8 +41,6 @@ def create_db_connection() -> psycopg2.extensions.connection:
     :return: The connection object.
     """
     try:
-        logging.info("Creating database connection...")
-
         for key in ['dbname', 'user', 'password']:
             if not DB_PARAMS.get(key):
                 raise ValueError(f"Missing required database parameter: {key}")

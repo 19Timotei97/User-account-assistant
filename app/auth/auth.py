@@ -1,10 +1,10 @@
 import os
 import logging
+import jwt
 
 # Package imports
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from jose import jwt, JWTError
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
@@ -72,7 +72,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
             raise ValueError("SECRET_KEY or ALGORITHM is not set in the environment")
 
         encoded_jwt = jwt.encode(
-            claims=to_encode, 
+            payload=to_encode, 
             key=secret_key, 
             algorithm=algorithm
         )
@@ -103,9 +103,9 @@ def verify_access_token(token: str, credentials_exception: HTTPException) -> Tok
 
         # Decode the JWT token
         payload = jwt.decode(
-            token=token, 
-            key=os.getenv('SECRET_KEY'),
-            algorithms=[os.getenv('ALGORITHM')]
+            jwt=token, 
+            key=secret_key,
+            algorithms=[algorithm]
         )
         
         username: str = payload.get("sub")
@@ -124,7 +124,7 @@ def verify_access_token(token: str, credentials_exception: HTTPException) -> Tok
         logging.error(f"Invalid claims in the token: {claims_excep}")
         raise HTTPException(status_code=401, detail="Invalid token claims")
     
-    except JWTError as jwt_error:
+    except jwt.JWTError as jwt_error:
         logging.error(f"JWT error: {jwt_error}")
         raise credentials_exception
 

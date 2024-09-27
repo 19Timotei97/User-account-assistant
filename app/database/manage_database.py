@@ -63,8 +63,8 @@ def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
         raise DatabaseOperationError(f"Failed to retrieve embedding from database: {database_exception}")
     
     except Exception as select_excep:
-        logging.error(f"Unexpected error: {select_excep}")
-        raise DatabaseOperationError(f"Unexpected error occurred: {select_excep}")
+        logging.error(f"Unexpected error occured when retrieving embedding: {select_excep}")
+        raise DatabaseOperationError(f"Unexpected error occured when retrieving embedding: {select_excep}")
 
     return None
 
@@ -82,11 +82,7 @@ def get_embeddings_from_collection(collection: str) -> List[Tuple[str, np.ndarra
                 get_embedding_from_collection_query = SQL(
                     "SELECT content, embedding, answer FROM embeddings WHERE collection = {}").format(collection)
                 curs.execute(get_embedding_from_collection_query)
-                
-                # curs.execute(
-                #     "SELECT content, embedding, answer FROM embeddings WHERE collection = %s",
-                #     (collection,)
-                # )
+
                 results = curs.fetchall()
 
                 return [(content, np.array(json.loads(embedding)), answer) for content, embedding, answer in results]
@@ -96,8 +92,8 @@ def get_embeddings_from_collection(collection: str) -> List[Tuple[str, np.ndarra
         raise DatabaseOperationError(f"Failed to retrieve embeddings from collection {collection}: {database_exception}")
     
     except Exception as select_from_collection_excep:
-        logging.error(f"Unexpected error: {select_from_collection_excep}")
-        raise DatabaseOperationError(f"Unexpected error occurred: {select_from_collection_excep}")
+        logging.error(f"Unexpected error when retrieving embeddings from collection {collection}: {select_from_collection_excep}")
+        raise DatabaseOperationError(f"Unexpected error when retrieving embeddings from collection {collection}: {select_from_collection_excep}")
     
     return []
 
@@ -143,8 +139,8 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
         raise DatabaseOperationError(f"Failed to add embeddings: {database_exception}")
     
     except Exception as insert_excep:
-        logging.error(f"Unexpected error: {insert_excep}")
-        raise DatabaseOperationError(f"Unexpected error occurred: {insert_excep}")
+        logging.error(f"Unexpected error when adding embeddings to database: {insert_excep}")
+        raise DatabaseOperationError(f"Unexpected error when adding embeddings to database: {insert_excep}")
 
 
 @celery.task
@@ -185,13 +181,24 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
         raise DatabaseOperationError(f"Failed to update embeddings: {database_exception}")
     
     except Exception as update_excep:
-        logging.error(f"Unexpected error: {update_excep}")
-        raise DatabaseOperationError(f"Unexpected error occurred: {update_excep}")
+        logging.error(f"Unexpected error when updating embeddings in database: {update_excep}")
+        raise DatabaseOperationError(f"Unexpected error when updating embeddings in database: {update_excep}")
 
 
 def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) -> Tuple[Optional[str], Optional[str], float]:
     """
     Searches for the most similar embedding to the query embedding directly in the database.
+
+    Why is this better than an in-memory similiarity search?
+    
+    1.  The usage of a database query: The similarity search is done using an SQL query that runs on the PostgreSQL database. 
+        The embeddings are stored in a table, and the search is performed on this table `(SELECT content, answer, 1 - (embedding <=> %s::vector))`, which returns the most similar result.
+
+    2.  pgvector: The `<=>` operator is specific to `pgvector` for computing the distance between vectors (embeddings). 
+        This computation happens inside the database.
+
+    3.  Efficient Vector Search: Since the search is happening directly on the database level, it's more scalable and efficient for large datasets, 
+        as it leverages the database's indexing and optimized search capabilities, rather than loading all embeddings into memory.
     
     :param query_embedding: The embedding of the query to search for.
     :param collection: The collection to search within.
@@ -219,6 +226,10 @@ def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) ->
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error searching for similarity in the database: {database_exception}")
         raise DatabaseOperationError(f"Failed to search for similarity: {database_exception}")
+    
+    except Exception as similiarity_search_error:
+        logging.error(f"Unexpected error when searching for similarity in the database: {similiarity_search_error}")
+        raise DatabaseOperationError(f"Unexpected error when searching for similarity in the database: {similiarity_search_error}")
 
     return None
 
@@ -234,10 +245,6 @@ def delete_embedding_from_db(content: str, collection: str) -> None:
     try:
         with create_db_connection() as conn:
             with conn.cursor() as curs:
-                # delete_embedding_query = SQL(
-                #     "DELETE FROM embeddings WHERE content = {} AND collection = {}").format(content, collection)
-                # curs.execute(delete_embedding_query)
-
                 curs.execute(
                     "DELETE FROM embeddings WHERE content = %s AND collection = %s",
                     (content, collection)
@@ -249,5 +256,5 @@ def delete_embedding_from_db(content: str, collection: str) -> None:
         raise DatabaseOperationError(f"Failed to delete embedding: {database_exception}")
     
     except Exception as delete_excep:
-        logging.error(f"Unexpected error: {delete_excep}")
-        raise DatabaseOperationError(f"Unexpected error occurred: {delete_excep}")
+        logging.error(f"Unexpected error when deleting embedding from database: {delete_excep}")
+        raise DatabaseOperationError(f"Unexpected error when deleting embedding from database: {delete_excep}")

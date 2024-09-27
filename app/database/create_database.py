@@ -43,13 +43,15 @@ def create_database_if_not_exists() -> None:
     :return: None
     """
     db_name = os.getenv('POSTGRES_DB')
+    db_user = os.getenv('POSTGRES_USER', 'postgres')
+    db_password = os.getenv('POSTGRES_PASSWORD', '')
 
     # Connect to the default database (postgres)
     try:
         with psycopg2.connect(
             dbname='postgres',
-            user=os.getenv('POSTGRES_USER', 'postgres'),
-            password=os.getenv('POSTGRES_PASSWORD', ''),
+            user=db_user,
+            password=db_password,
             host='db',
             port='5432'
         ) as conn:
@@ -104,7 +106,7 @@ def setup_database(max_retries: int = 5, retry_delay: int = 5) -> None:
                     # Create the embeddings table
                     curs.execute(
                     """
-                    CREATE EXTENSION IF NOT EXISTS vector;         
+                    CREATE EXTENSION IF NOT EXISTS vector;
                     
                     CREATE TABLE IF NOT EXISTS embeddings (
                         id SERIAL PRIMARY KEY,
@@ -113,7 +115,7 @@ def setup_database(max_retries: int = 5, retry_delay: int = 5) -> None:
                         answer TEXT NOT NULL,
                         collection VARCHAR(255) NOT NULL
                     );
-                            
+
                     CREATE INDEX IF NOT EXISTS embeddings_collection_idx ON embeddings(collection);
                     
                     CREATE INDEX IF NOT EXISTS embeddings_vector_idx ON embeddings USING ivfflat (embedding vector_cosine_ops);

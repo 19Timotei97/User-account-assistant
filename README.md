@@ -132,3 +132,23 @@ Of course, I'm not going to "get drunk with cold water", as we Romanians like to
 I've implemented a **contextual FAQ assistant**, capable of either selecting the most appropiate response from a local database, based on a similarity score or prompt an online LLM for the answer. I've added authentication using **FastAPI's dependency mechanism**, **PostgreSQL** for storing and retrieving embeddings and their answers, **LangChain's RunnableBranch** for answering / refusing to answer (this part still needs some work, we'll put it into backlog), **Dockerfile** and **docker-compose.yml** for running it as a Docker image and **Celery** for async embeddings adding and updating.
 As external assistants, I've used **ChatGPT** (it's really great with the newest _memory_ feature), **Claude** (which sometimes is annoying with its way too formal way of responding, as if he would cry with me too when I'm getting an error) and **Amazon's Q** for code completion (it's really great, it shortened the development time a lot!).
 Regardless of the final answer, I'm very _proud_ of what I've achieved, having learned a lot, being exposed to a lot of (new and old) technologies and being motivated to do it.
+
+## LE Updates!
+1. Switched to an in-database similarity search, which makes use of pgvector's functionality for vector cosine operation. For more info, check the newly added `search_for_similarity_in_db` method inside `app/database/manage_database.py` script.
+
+```sql
+SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
+    FROM embeddings
+    WHERE collection = %s
+    ORDER BY similarity DESC
+    LIMIT 1;
+```
+
+This should help in case the local database becomes quite large.
+
+2. Will work on some improvements including:
+* following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/.
+* better management of env variables through a setup such as: https://fastapi.tiangolo.com/advanced/settings/
+* SQLAlchemy for managing DB resources in an ORM approach
+* schemas moved in a separate module and not in the main API logic (main.py)
+* endpoint output schemas to be used and objects directly from the DB served (in this particular example)

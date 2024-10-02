@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from langchain_community.utils.math import cosine_similarity
 
 # Local files imports
+from core.config import get_settings
 from services.llm_service import OpenAI_Responder
 
 
@@ -22,14 +23,16 @@ This script defines utility functions for the application, such as database conn
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Retrieve the environment variables as settings
+settings = get_settings()
 
 # Database connection parameters, used to connect to the PostgreSQL database.
 DB_PARAMS = {
-    'dbname': os.getenv('POSTGRES_DB'),
-    'user': os.getenv('POSTGRES_USER'),
-    'password': os.getenv('POSTGRES_PASSWORD'),
-    'host': 'db',
-    'port': '5432'
+    'dbname': settings.postgres_db,
+    'user': settings.postgres_user,
+    'password': settings.postgres_password,
+    'host': settings.postgres_host,
+    'port': settings.postgres_port
 }
 
 
@@ -87,10 +90,10 @@ def get_openai_responder() -> OpenAI_Responder:
     
     :return: An instance of the OpenAI_Responder class.
     """
-    model_name = str(os.getenv("OPENAI_MODEL_NAME", "gpt-3.5-turbo"))
-    max_tokens = int(os.getenv("OPENAI_MODEL_MAX_TOKENS", 150))
-    n = int(os.getenv("OPENAI_MODEL_N", 1))
-    temperature = float(os.getenv("OPENAI_MODEL_TEMPERATURE", 0))
+    model_name = settings.openai_model_name
+    max_tokens = int(settings.openai_model_max_tokens)
+    n = int(settings.openai_model_n)
+    temperature = float(settings.openai_model_temperature)
     
     return OpenAI_Responder(
         model_name=model_name, 
@@ -106,7 +109,7 @@ def get_faq_collection_name() -> str:
     
     :return: The collection name as a string.
     """
-    return str(os.getenv('FAQ_COLLECTION_NAME'))
+    return settings.faq_collection_name
 
 
 def retrieve_locally_stored_FAQ() -> list:

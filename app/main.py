@@ -1,4 +1,3 @@
-import os
 import logging
 import asyncio
 
@@ -20,6 +19,7 @@ from requests import RequestException
 
 # Local files imports
 from auth.auth import Token, TokenData, create_access_token, get_token
+from core.config import get_settings
 from database.create_database import create_database_if_not_exists, setup_database
 from database.manage_database import search_for_similarity_in_db, add_embeddings_to_db, update_embeddings_in_db
 from services.llm_service import OpenAI_Responder
@@ -40,6 +40,9 @@ The script also includes error handling and logging mechanisms for better debugg
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Retrieve the environment variables
+settings = get_settings()
+
 # Set the base path
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -49,8 +52,8 @@ templates = Jinja2Templates(directory=str(Path(BASE_DIR, 'templates')))
 # Get a singleton instance of the OpenAI embeddings model
 embeddings_service = OpenAIEmbeddingsService()
 
-# Retrieve the similarity threshold, not to be hardcoded
-similarity_threshold = float(os.getenv('SIMILARITY_THRESHOLD', 0.75))
+# Retrieve the similarity threshold
+similarity_threshold = float(settings.similarity_threshold)
 
 # Find and parse the .env data
 load_dotenv()
@@ -171,7 +174,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        access_token_expires = timedelta(minutes=int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '30')))
+        access_token_expires = timedelta(minutes=int(settings.access_token_expire_minutes))
 
         # Create access token
         access_token = create_access_token(

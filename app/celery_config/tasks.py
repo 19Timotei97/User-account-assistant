@@ -1,8 +1,10 @@
-import os
 import logging
 
 # Package imports
 from celery import Celery
+
+# Local files imports
+from core.config import get_settings
 
 
 """
@@ -15,9 +17,12 @@ It also autodiscovers the tasks in the database.manage_database module, for asyn
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Get the environment variables from the config file
+settings = get_settings()
+
 # Retrieve and validate environment variables
-broker_url = os.getenv('CELERY_BROKER_URL')
-result_backend = os.getenv('CELERY_RESULT_BACKEND')
+broker_url = settings.celery_broker_url
+result_backend = settings.celery_result_backend
 
 if not broker_url:
     raise EnvironmentError("CELERY_BROKER_URL environment variable is not set!")

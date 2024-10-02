@@ -1,10 +1,10 @@
-import os
 import psycopg2
 import psycopg2.sql
 import time
 import logging
 
 # Local files imports
+from core.config import get_settings
 from utils.utils import create_db_connection
 
 
@@ -17,6 +17,9 @@ The script also includes a retry mechanism for table creation in case of errors.
 
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Retrieve the environment variables as settings
+settings = get_settings()
 
 
 class DatabaseCreationError(Exception):
@@ -42,9 +45,9 @@ def create_database_if_not_exists() -> None:
 
     :return: None
     """
-    db_name = os.getenv('POSTGRES_DB')
-    db_user = os.getenv('POSTGRES_USER', 'postgres')
-    db_password = os.getenv('POSTGRES_PASSWORD', '')
+    db_name = settings.postgres_db
+    db_user = settings.postgres_user
+    db_password = settings.postgres_password
 
     # Connect to the default database (postgres)
     try:

@@ -1,4 +1,3 @@
-import os
 import logging
 import json
 import numpy as np
@@ -11,6 +10,7 @@ from psycopg2.errors import DatabaseError, InterfaceError
 
 # Local files imports
 from celery_config.tasks import celery
+from core.config import get_settings
 from services.embeddings_service import OpenAIEmbeddingsService
 from utils.utils import create_db_connection
 
@@ -23,11 +23,14 @@ The database is used to store the embeddings of the content to avoid recomputing
 """
 
 
-# Initialize the embeddings model
-embeddings_service = OpenAIEmbeddingsService()
-
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Retrieve the environment variables as settings
+settings = get_settings()
+
+# Initialize the embeddings model
+embeddings_service = OpenAIEmbeddingsService()
 
 
 class DatabaseOperationError(Exception):
@@ -112,7 +115,7 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
     try:
         with create_db_connection() as conn:
             with conn.cursor() as curs:
-                batch_size = int(os.getenv('BATCH_SIZE'))
+                batch_size = int(settings.batch_size)
 
                 for idx in range(0, len(items), batch_size):
                     batch = items[idx:idx + batch_size]
@@ -157,7 +160,7 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
     try:
         with create_db_connection() as conn:
             with conn.cursor() as curs:
-                batch_size = int(os.getenv('BATCH_SIZE'))
+                batch_size = int(settings.batch_size)
 
                 for idx in range(0, len(items), batch_size):
                     batch = items[idx:idx + batch_size]

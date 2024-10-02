@@ -1,5 +1,4 @@
 import logging
-import os
 
 # Package imports
 from abc import ABC, abstractmethod
@@ -12,6 +11,9 @@ from langchain_core.messages.ai import AIMessage
 from langchain_openai import ChatOpenAI
 from langchain.schema.runnable import RunnableBranch
 
+# Local files imports
+from core.config import get_settings
+
 
 """
 This script defines the Responder class and its subclasses, which are used to generate responses to questions.
@@ -21,6 +23,9 @@ The OpenAI_Responder class uses the OpenAI API and LangChain to route and respon
 
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Retrieve the environment variables as settings
+settings = get_settings()
 
 
 class Responder(ABC):
@@ -57,7 +62,8 @@ class OpenAI_Responder(Responder):
         :param temperature: The temperature to use for sampling.
         :return: None
         """
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.openai_api_key = settings.openai_api_key
+
         if not self.openai_api_key:
             raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")
 

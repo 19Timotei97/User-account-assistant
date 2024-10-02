@@ -1,4 +1,3 @@
-import os
 import logging
 import jwt
 
@@ -9,6 +8,9 @@ from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
+# Local files imports
+from core.config import get_settings
+
 
 """
 This script defines the authentication logic for the application.
@@ -18,6 +20,9 @@ It includes the creation of access tokens, token verification, and token data ma
 
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Retrieve environment variables in a Pydantic way
+settings = get_settings()
 
 # OAuth2 flow for authentication using a bearer token obtained with a password
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -51,22 +56,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """
     try:
         to_encode = data.copy()
-
-        # Fetch and validate expiration time from environment or provide a default value
-        access_token_expire_minutes = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', 30))
         
         # We can either use the expiration delta or use the one defined in the .env file
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
-            expire = datetime.now(timezone.utc) + timedelta(minutes=access_token_expire_minutes)
+            expire = datetime.now(timezone.utc) + timedelta(minutes=int(settings.access_token_expire_minutes))
         
         #  Set token expiration
         to_encode.update({"exp": expire})
         
         # Generate JWT token
-        secret_key = os.getenv('SECRET_KEY')
-        algorithm = os.getenv('ALGORITHM')
+        secret_key = settings.secret_key
+        algorithm = settings.algorithm
 
         if not secret_key or not algorithm:
             raise ValueError("SECRET_KEY or ALGORITHM is not set in the environment")
@@ -94,8 +96,8 @@ def verify_access_token(token: str, credentials_exception: HTTPException) -> Tok
     :return: The token data.
     """
     try:
-        secret_key = os.getenv('SECRET_KEY')
-        algorithm = os.getenv('ALGORITHM')
+        secret_key = settings.secret_key
+        algorithm = settings.algorithm
 
         if not secret_key or not algorithm:
             logging.error("SECRET_KEY or ALGORITHM is not set in the environment")
@@ -103,7 +105,7 @@ def verify_access_token(token: str, credentials_exception: HTTPException) -> Tok
 
         # Decode the JWT token
         payload = jwt.decode(
-            jwt=token, 
+            jwt=token,
             key=secret_key,
             algorithms=[algorithm]
         )

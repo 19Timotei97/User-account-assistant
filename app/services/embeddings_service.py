@@ -1,4 +1,3 @@
-import os
 import logging
 import numpy as np
 
@@ -8,6 +7,7 @@ from typing import List
 from langchain_openai import OpenAIEmbeddings
 
 # Local files imports
+from core.config import get_settings
 from utils.utils import limit_token_length
 
 
@@ -21,6 +21,9 @@ It is implemented as a singleton to avoid re-initialization of the embeddings mo
 
 # Set the logging config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Retrieve the environment variables as settings
+settings = get_settings()
 
 
 class EmbeddingComputationError(Exception):
@@ -75,7 +78,7 @@ class OpenAIEmbeddingsService(EmbeddingsService):
         """
         if not hasattr(self, 'initialized'):
             # Retrieve and ensure the API key is correctly set
-            openai_api_key = os.getenv('OPENAI_API_KEY')
+            openai_api_key = settings.openai_api_key
 
             if not openai_api_key:
                 raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")

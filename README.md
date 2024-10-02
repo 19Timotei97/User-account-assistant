@@ -148,7 +148,7 @@ This should help in case the local database becomes quite large.
 
 2. Will work on some improvements including:
 * following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/.
-* better management of env variables through a setup such as: https://fastapi.tiangolo.com/advanced/settings/
+* better management of env variables through a setup such as: https://fastapi.tiangolo.com/advanced/settings/ **[DONE]**
 * SQLAlchemy for managing DB resources in an ORM approach
 * schemas moved in a separate module and not in the main API logic (main.py)
 * endpoint output schemas to be used and objects directly from the DB served (in this particular example)

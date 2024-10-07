@@ -252,15 +252,15 @@ async def ask_question(
 
             # Check to see if the similarity is at least equal to the threshold
             if similarity_score >= similarity_threshold:
-                # Optional: Update the embedding if needed
-                update_embeddings_in_db.delay([(matched_question, answer, faq_collection_name)])
-
                 # Create the required response structure and return it
                 response_data = {
                     "source": "local",
                     "matched_question": matched_question,
                     "answer": answer
                 }
+
+                # Update the matched embedding for faster retrieval next time
+                update_embeddings_in_db.delay([(matched_question, answer, faq_collection_name)])
 
             else:
                 # If the similarity is below the threshold, return the OpenAI response
@@ -272,12 +272,12 @@ async def ask_question(
                     "answer": openai_response
                 }
         
-            # Queue background task to add/update embeddings in the background
-            add_embeddings_to_db.delay([(
-                user_question_str_representation, 
-                response_data['answer'], 
-                faq_collection_name
-            )])
+                # Add the new embedding to the database
+                add_embeddings_to_db.delay([(
+                    user_question_str_representation,
+                    openai_response,
+                    faq_collection_name
+                )])
         
         return JSONResponse(content=response_data)
     

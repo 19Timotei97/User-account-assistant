@@ -17,16 +17,16 @@ settings = get_settings()
 # Create a database engine with connection pooling
 engine = create_engine(
     settings.database_url,
-    poolclass=QueuePool,  # Use a queue pool for better performance
-    pool_size=10,
+    poolclass=QueuePool,  # Use a queue pool for connection reusage
+    pool_size=10, # at most 10 connection in the pool
     max_overflow=20,
-    isolation_level="READ_COMMITTED"
+    isolation_level="READ_COMMITTED" # important for managing how concurrent transactions interact with each other
 )
 
 # Create a session for database transactions
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Definine a local thread to ensure proper database session management
+# Definine a a namespace that can store data specific to each thread
 thread_local = local()
 
 # Define a declarative base for the database table
@@ -39,17 +39,22 @@ Base.metadata.create_all(engine)
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
-    Enables context management for the database session.
+    Enables context management (resource management) for the database session.
     This ensures that no multiple sessions are created and the session is closed at the end.
-    It also uses a local thread to ensure proper session management in multi-threaded environments.
+    It ensures that the session is properly committed or rolled back in case of exceptions.
+    It also defines different sessions for each thread, to ensure concurrency.
+
+    :return: A database session
     """
-    # If the local thread already defined a session, use that one
+    # If the thread already defined a session, use that one
     if hasattr(thread_local, 'session'):
         yield thread_local.session
     
     else:
-        # Define a new session and bind it to the thread
+        # Define a new database session
         db_session = SessionLocal()
+
+        # Assign the session to the current thread
         thread_local.session = db_session
 
         try:
@@ -64,4 +69,5 @@ def get_db_session() -> Generator[Session, None, None]:
             # Close and remove the session
             db_session.close()
 
+            # Delete the session from the thread
             del thread_local.session

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # The algorithm used for encoding and decoding JWT tokens
     algorithm: str = "HS256"
-    access_token_expires_minutes: int = 60
+    access_token_expire_minutes: int = 60
     secret_key: str
 
     # The batch size for the vector database
@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     openai_model_temperature: float = 0.3
 
     model_config = SettingsConfigDict(env_file=".env")
+
+    @property
+    def database_url(self) -> str:
+        return (
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}@"
+            f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 
 @lru_cache()

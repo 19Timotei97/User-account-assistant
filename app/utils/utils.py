@@ -1,13 +1,12 @@
 import os
 import logging
-import psycopg2
 import tiktoken
 import json
 import numpy as np
 
 # Package imports
-from typing import List, Optional, Tuple
 from langchain_community.utils.math import cosine_similarity
+from typing import List, Optional, Tuple
 
 # Local files imports
 from core.config import get_settings
@@ -25,38 +24,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Retrieve the environment variables as settings
 settings = get_settings()
-
-# Database connection parameters, used to connect to the PostgreSQL database.
-DB_PARAMS = {
-    'dbname': settings.postgres_db,
-    'user': settings.postgres_user,
-    'password': settings.postgres_password,
-    'host': settings.postgres_host,
-    'port': settings.postgres_port
-}
-
-
-def create_db_connection() -> psycopg2.extensions.connection:
-    """
-    Creates a connection to the PostgreSQL database.
-    It uses the pre-defined database parameters from the DB_PARAMS dictionary.
-
-    :return: The connection object.
-    """
-    try:
-        for key in ['dbname', 'user', 'password']:
-            if not DB_PARAMS.get(key):
-                raise ValueError(f"Missing required database parameter: {key}")
-
-        return psycopg2.connect(**DB_PARAMS)
-    
-    except psycopg2.OperationalError as operational_excep:
-        logging.error(f"Encountered operational error when trying to connect to the database: {operational_excep}")
-        raise operational_excep
-    
-    except Exception as connection_excep:
-        logging.error(f"Unexpected error occurred: {connection_excep}")
-        raise connection_excep
 
 
 def limit_token_length(text: str, max_tokens: int = 2000) -> str:

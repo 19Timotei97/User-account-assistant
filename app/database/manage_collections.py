@@ -1,12 +1,12 @@
 import logging
 
 # Package imports
+from sqlalchemy.exc import DatabaseError, InterfaceError, IntegrityError
 from typing import List
-from psycopg2.sql import SQL
-from psycopg2.errors import DatabaseError, InterfaceError, UniqueViolation
 
 # Local files imports
-from utils.utils import create_connection
+from .base import get_db_session
+from .models import Embedding
 
 
 """
@@ -25,6 +25,7 @@ Functions:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+
 def get_collections() -> List:
     """
     Retrieves all collections from the database.
@@ -32,12 +33,22 @@ def get_collections() -> List:
     :return: A list of collections.
     """
     try:
-        with create_connection() as conn:
-            with conn.cursor() as curs:
-                curs.execute("SELECT DISTINCT collection FROM embeddings")
-                collections = [row[0] for row in curs.fetchall()]
+        with get_db_session() as session:
+            # Run the SQL query using the local session
+            result = session.query(Embedding.collection) \
+                            .distinct() \
+                            .all()
+
+            # Create a list of returned collections
+            collections = [row[0] for row in result.fetchall()]
+            
+            return collections
         
-        return collections
+    except IntegrityError as integrity_excep:
+        session.rollback()  # Rollback if an unexpected integrity error occurs
+        
+        logging.error("Failed to retrieve collections due to an integrity error.")
+        raise integrity_excep
     
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error retrieving collections from database: {database_exception}")
@@ -56,32 +67,35 @@ def add_collection(collection_name: str) -> None:
         raise ValueError("Collection name cannot be empty.")
 
     try:
-        with create_connection() as conn:
-            with conn.cursor() as curs:
-                # Check if collection already exists
-                check_collection_existence_query = SQL(
-                    "SELECT 1 FROM embeddings WHERE collection = {} LIMIT 1").format(collection_name)
-                curs.execute(check_collection_existence_query)
-                # curs.execute("SELECT 1 FROM embeddings WHERE collection = %s LIMIT 1", (collection_name,))
-                
-                if curs.fetchone():
-                    logging.warning(f"Collection '{collection_name}' already exists.")
-                    return
-                
-                # Insert the new collection
-                collection_insertion_query = SQL(
-                    "INSERT INTO embeddings (collection) VALUES ({})").format(collection_name)
-                curs.execute(collection_insertion_query)
+        # Run the SQL query using the local session
+        with get_db_session() as session:
+            # Check if the collection already exists
+            existing_collection = session.query(Embedding.collection) \
+                .filter(Embedding.collection == collection_name) \
+                .first()
 
-                # curs.execute(
-                #     "INSERT INTO embeddings (collection) VALUES (%s)",
-                #     (collection_name,)
-                # )
-            conn.commit()
-    
-    except UniqueViolation as unique_violation_excep:
-        logging.warning(f"Collection '{collection_name}' already exists!")
-        raise unique_violation_excep
+            if existing_collection:
+                logging.warning(f"Collection '{collection_name}' already exists.")
+                return
+
+            # Add a new embedding with the collection name
+            new_embedding = Embedding(
+                content="placeholder_content",
+                embedding=[0] * 1536,  # placeholder for embedding
+                answer="placeholder_answer",
+                collection=collection_name
+            )
+
+            session.add(new_embedding)
+
+            # Attempt to commit the new embedding
+            session.commit()
+
+    except IntegrityError as integrity_excep:
+        session.rollback()  # Rollback if an unexpected integrity error occurs
+        
+        logging.error(f"Failed to add collection '{collection_name}' due to an integrity error.")
+        raise integrity_excep
     
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error adding collection to database: {database_exception}")
@@ -91,6 +105,7 @@ def add_collection(collection_name: str) -> None:
 def update_collection(old_collection_name: str, new_collection_name: str) -> None:
     """
     Updates the collection in the database with the new collection name.
+    Checks if the old collection exists before attempting to update it.
 
     :param old_collection_name: The name of the collection to update.
     :param new_collection_name: The new name of the collection.
@@ -101,31 +116,32 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
         raise ValueError("New collection name cannot be empty.")
 
     try:
-        with create_connection() as conn:
-            with conn.cursor() as curs:
-                # Check if the old collection exists
-                check_collection_existence_query = SQL(
-                    "SELECT 1 FROM embeddings WHERE collection = {} LIMIT 1").format(old_collection_name)
-                curs.execute(check_collection_existence_query)
-                # curs.execute("SELECT 1 FROM embeddings WHERE collection = %s LIMIT 1", (old_collection_name,))
-                
-                if not curs.fetchone():
-                    logging.warning(f"Collection '{old_collection_name}' does not exist.")
-                    return
+        with get_db_session() as session:
+            # Check if the old collection exists
+            old_collection = session.query(Embedding.collection) \
+                                    .filter(Embedding.collection == old_collection_name) \
+                                    .first()
+            
+            if not old_collection:
+                logging.warning(f"Collection '{old_collection_name}' does not exist.")
+                return
 
-                # Update the collection name
-                update_collection_query = SQL(
-                    "UPDATE embeddings SET collection = {} WHERE collection = {}").format(new_collection_name, old_collection_name)
-                curs.execute(update_collection_query)
-                
-                # curs.execute(
-                #     "UPDATE embeddings SET collection = %s WHERE collection = %s",
-                #     (new_collection_name, old_collection_name)
-                # )
-            conn.commit()
-    except UniqueViolation as unique_violation_excep:
-        logging.warning(f"Collection '{new_collection_name}' already exists!")
-        raise unique_violation_excep
+            # Retrieve all records with the old collection name
+            old_collection_objs = session.query(Embedding) \
+                                        .filter(Embedding.collection == old_collection_name) \
+                                        .all()
+
+            # Update the collection name for each record
+            for obj in old_collection_objs:
+                obj.collection = new_collection_name
+
+            session.commit()  # Attempt to commit the new collection name
+    
+    except IntegrityError as integrity_excep:
+        session.rollback()  # Rollback if an unexpected integrity error occurs
+        
+        logging.error(f"Failed to update collection '{old_collection_name}' with name {new_collection_name} due to an integrity error.")
+        raise integrity_excep
 
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error updating collection in database: {database_exception}")
@@ -135,6 +151,7 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
 def delete_collection(collection_name: str) -> None:
     """
     Deletes the collection from the database.
+    Checks if the collection exists before attempting to delete it.
 
     :param collection_name: The name of the collection to delete.
     :return: None
@@ -144,32 +161,33 @@ def delete_collection(collection_name: str) -> None:
         raise ValueError("Collection name cannot be empty.")
 
     try:
-        with create_connection() as conn:
-            with conn.cursor() as curs:
-                # Check if the collection exists before attempting to delete
-                check_collection_existence_query = SQL(
-                    "SELECT 1 FROM embeddings WHERE collection = {} LIMIT 1").format(collection_name)
-                curs.execute(check_collection_existence_query)
-                # curs.execute("SELECT 1 FROM embeddings WHERE collection = %s LIMIT 1", (collection_name,))
-                
-                if not curs.fetchone():
-                    logging.warning(f"Collection '{collection_name}' does not exist.")
-                    return
+        with get_db_session() as session:
+            # Check if the collection exists before attempting to delete
+            collection_to_delete = session.query(Embedding.collection) \
+                                    .filter(Embedding.collection == collection_name) \
+                                    .first()
 
-                # Delete the specified collection
-                delete_collection_query = SQL(
-                    "DELETE FROM embeddings WHERE collection = {}").format(collection_name)
-                curs.execute(delete_collection_query)
-                
-                # curs.execute(
-                #     "DELETE FROM embeddings WHERE collection = %s",
-                #     (collection_name,)
-                # )
-            conn.commit()
+            if not collection_to_delete:
+                logging.warning(f"Collection '{collection_name}' does not exist.")
+                return
+            
+            # Retrieve all records with the collection name
+            delete_collection_objs = session.query(Embedding) \
+                                        .filter(Embedding.collection == collection_name) \
+                                        .all()
+
+            # Update the collection name for each record
+            for obj in delete_collection_objs:
+                session.delete(obj)
+
+            # Attempt to commit the deleted collection name
+            session.commit()
     
-    except UniqueViolation as unique_violation_excep:
-        logging.warning(f"Collection '{collection_name}' does not exist!")
-        raise unique_violation_excep
+    except IntegrityError as integrity_excep:
+        session.rollback()  # Rollback if an unexpected integrity error occurs
+        
+        logging.error(f"Failed to delete collection '{collection_name}' due to an integrity error.")
+        raise integrity_excep
 
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error deleting collection from database: {database_exception}")

@@ -1,11 +1,12 @@
-import psycopg2
-import psycopg2.sql
-import time
 import logging
+import time
+
+# Package imports
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, DatabaseError, ProgrammingError, SQLAlchemyError
 
 # Local files imports
 from core.config import get_settings
-from utils.utils import create_db_connection
 
 
 """
@@ -48,34 +49,41 @@ def create_database_if_not_exists() -> None:
     db_name = settings.postgres_db
     db_user = settings.postgres_user
     db_password = settings.postgres_password
+    db_host = settings.postgres_host
+    db_port = settings.postgres_port
 
     # Connect to the default database (postgres)
     try:
-        with psycopg2.connect(
-            dbname='postgres',
-            user=db_user,
-            password=db_password,
-            host='db',
-            port='5432'
-        ) as conn:
+        logging.info("Trying to create the database if it doesn't exist...")
+
+        # Create the default postgres URL
+        default_database_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/postgres"
+
+        # Connect to the default database (postgres)
+        engine = create_engine(default_database_url)
+
+        with engine.connect() as conn:
             # Allow database creation
-            conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+
+            # Check for database existence first
+            database_existence = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname=:db_name"), 
+                {"db_name": db_name}
+            )
             
-            with conn.cursor() as curs:
-                curs.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
-                exists = curs.fetchone()
-                
-                if not exists:
-                    curs.execute(f"CREATE DATABASE {psycopg2.sql.Identifier(db_name)}")
-                    logging.info(f"Database {db_name} created successfully!")
-                else:
-                    logging.info(f"Database {db_name} already exists!")
-    
-    except psycopg2.OperationalError as operational_excep:
+            if not database_existence.fetchone():
+                conn.execute(text("CREATE DATABASE {db_name}"))
+                logging.info(f"Database {db_name} created successfully!")
+            else:
+                logging.info(f"Database {db_name} already exists!")
+
+
+    except OperationalError as operational_excep:
         logging.error(f"OperationalError while connecting or creating the database: {operational_excep}")
         raise DatabaseCreationError("Failed to create database due to operational issues") from operational_excep
     
-    except psycopg2.DatabaseError as database_excep:
+    except DatabaseError as database_excep:
         logging.error(f"DatabaseError: {database_excep}")
         raise DatabaseCreationError("Failed to create the database") from database_excep
     
@@ -103,33 +111,53 @@ def setup_database(max_retries: int = 5, retry_delay: int = 5) -> None:
 
     while retries < max_retries:
         try:
-            with create_db_connection() as conn:
-                with conn.cursor() as curs:
+            # Create an engine to connect to the database
+            engine = create_engine(settings.database_url)
+
+            # Create the needed table and extension
+            with engine.connect() as conn:
+
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+
+                # Check if the embeddings table already exists
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 
+                        FROM information_schema.tables 
+                        WHERE table_name = 'embeddings'
+                    );
+                """))
+
+                table_exists = result.scalar()
+
+                if not table_exists:
+                    logging.info("Creating embeddings table...")
 
                     # Create the embeddings table
-                    curs.execute(
-                    """
-                    CREATE EXTENSION IF NOT EXISTS vector;
-                    
-                    CREATE TABLE IF NOT EXISTS embeddings (
-                        id SERIAL PRIMARY KEY,
-                        content TEXT NOT NULL,
-                        embedding vector(1536),
-                        answer TEXT NOT NULL,
-                        collection VARCHAR(255) NOT NULL
-                    );
+                    conn.execute(text("""
+                        CREATE EXTENSION IF NOT EXISTS vector;
+                        
+                        CREATE TABLE IF NOT EXISTS embeddings (
+                            id SERIAL PRIMARY KEY,
+                            content TEXT NOT NULL,
+                            embedding vector(1536),
+                            answer TEXT NOT NULL,
+                            collection VARCHAR(255) NOT NULL
+                        );
 
-                    CREATE INDEX IF NOT EXISTS embeddings_collection_idx ON embeddings(collection);
-                    
-                    CREATE INDEX IF NOT EXISTS embeddings_vector_idx ON embeddings USING ivfflat (embedding vector_cosine_ops);
-                    """)
+                        CREATE INDEX IF NOT EXISTS embeddings_collection_idx ON embeddings(collection);
+                        
+                        CREATE INDEX IF NOT EXISTS embeddings_vector_idx ON embeddings USING ivfflat (embedding vector_cosine_ops);
+                    """))
 
-                conn.commit()
+                    logging.info("Embeddings table created successfully!")
+                else:
+                    logging.info("Embeddings table already exists!")
 
-                logging.info("Database setup completed successfully!")
-                return
+            logging.info("Database setup completed successfully!")
+            return
         
-        except psycopg2.OperationalError as operation_excep:
+        except OperationalError as operation_excep:
             # Handle connection-related issues
             logging.error(f"Operational error while setting up the database: {operation_excep}")
             
@@ -139,23 +167,23 @@ def setup_database(max_retries: int = 5, retry_delay: int = 5) -> None:
             
             retries += 1
 
-        except psycopg2.ProgrammingError as programming_excep:
+        except ProgrammingError as programming_excep:
             # Handle SQL-related issues
             logging.error(f"Programming error (SQL issue) while setting up the database: {programming_excep}")
             raise DatabaseSetupError(f"Failed due to a SQL issue: {programming_excep}")
 
-        except psycopg2.DatabaseError as database_excep:
+        except DatabaseError as database_excep:
             # General database errors
             logging.error(f"Database error occurred: {database_excep}")
             raise DatabaseSetupError(f"Failed due to a database issue: {database_excep}")
 
-        except psycopg2.Error as general_excep:
-            # Catch-all for other psycopg2-related errors
-            logging.error(f"General psycopg2 error occurred: {general_excep}")
-            raise DatabaseSetupError(f"Failed due to a general psycopg2 issue: {general_excep}")
+        except SQLAlchemyError as general_excep:
+            # Catch-all for other sqlalchemy-related errors
+            logging.error(f"General sqlalchemy error occurred: {general_excep}")
+            raise DatabaseSetupError(f"Failed due to a general sqlalchemy issue: {general_excep}")
 
         except Exception as unexpected_excep:
-            # Catch-all for unexpected issues not related to psycopg2
+            # Catch-all for unexpected issues not related to sqlalchemy
             logging.error(f"An unexpected error occurred: {unexpected_excep}")
             raise DatabaseSetupError(f"An unexpected error occurred: {unexpected_excep}")
 

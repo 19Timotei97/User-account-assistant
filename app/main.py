@@ -2,19 +2,19 @@ import logging
 import asyncio
 
 # Package imports
-from datetime import timedelta
-from pathlib import Path
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
+from jwt import PyJWTError
+from pathlib import Path
 from pydantic import BaseModel
 from psycopg2 import DatabaseError
-from dotenv import load_dotenv
-from jwt import PyJWTError
 from requests import RequestException
 
 # Local files imports
@@ -73,6 +73,12 @@ class Question(BaseModel):
     user_question: str
 
 
+class QuestionResponse(BaseModel):
+    source: str
+    matched_question: str
+    answer: str
+
+
 def store_initial_embeddings() -> None:
     """
     Stores the initial embeddings of the FAQ database in the database.
@@ -84,6 +90,8 @@ def store_initial_embeddings() -> None:
     
     faq_embeddings = [(item['question'], item['answer'], get_faq_collection_name()) for item in faq_local_database]
     
+    logging.info('Storing initial FAQ embeddings in the database...')
+
     add_embeddings_to_db(faq_embeddings)
 
 
@@ -216,13 +224,14 @@ async def ask_question_page(request: Request):
         raise HTTPException(status_code=500, detail="Error loading the question page")
 
 
-@app.post("/ask-question", response_class=JSONResponse)
+@app.post("/ask-question", response_model=QuestionResponse)
 async def ask_question(
     request: Request,
     user_question: Question,
     token: TokenData = Depends(get_token),
+    # database_session: Session = Depends(get_db_session), # This would work if celery wasn't needing serializable objects, which Session isn't
     openai_responder: OpenAI_Responder = Depends(get_openai_responder),
-    ) -> JSONResponse:
+    ) -> QuestionResponse:
     """
     Endpoint to handle the user's question.
     
@@ -233,7 +242,7 @@ async def ask_question(
     :return: The JSON response containing the matched question and answer or the OpenAI response.
     """
     if not user_question:
-        return JSONResponse(content={"error": "No question provided"}, status_code=400)
+        return HTTPException(status_code=400, detail="No question provided")
 
     try:
         user_question_str_representation = user_question.user_question
@@ -244,8 +253,11 @@ async def ask_question(
         # Get an embedding of the user's question
         question_embedding = embeddings_service.compute_embedding(user_question_str_representation)
 
-         # Perform similarity search in the database using the pgvector extension
-        most_similar_result = search_for_similarity_in_db(question_embedding, faq_collection_name)
+        # Perform similarity search in the database using the pgvector extension
+        most_similar_result = search_for_similarity_in_db(
+            question_embedding, 
+            faq_collection_name
+        )
 
         if most_similar_result:
             matched_question, answer, similarity_score = most_similar_result
@@ -253,33 +265,52 @@ async def ask_question(
             # Check to see if the similarity is at least equal to the threshold
             if similarity_score >= similarity_threshold:
                 # Create the required response structure and return it
-                response_data = {
-                    "source": "local",
-                    "matched_question": matched_question,
-                    "answer": answer
-                }
+                # response_data = {
+                #     "source": "local",
+                #     "matched_question": matched_question,
+                #     "answer": answer
+                # }
+
+                response_data = QuestionResponse(
+                    source="local",
+                    matched_question=matched_question,
+                    answer=answer
+                )
 
                 # Update the matched embedding for faster retrieval next time
-                update_embeddings_in_db.delay([(matched_question, answer, faq_collection_name)])
+                update_embeddings_in_db.delay( 
+                    [(
+                        matched_question, 
+                        answer, 
+                        faq_collection_name
+                    )]
+                )
 
             else:
                 # If the similarity is below the threshold, return the OpenAI response
                 openai_response = openai_responder.get_response(user_question_str_representation)
 
-                response_data = {
-                    "source": "openai",
-                    "matched_question": "N/A",
-                    "answer": openai_response
-                }
+                # response_data = {
+                #     "source": "openai",
+                #     "matched_question": "N/A",
+                #     "answer": openai_response
+                # }
+                response_data = QuestionResponse(
+                    source="openai",
+                    matched_question="N/A",
+                    answer=openai_response
+                )
         
                 # Add the new embedding to the database
-                add_embeddings_to_db.delay([(
-                    user_question_str_representation,
-                    openai_response,
-                    faq_collection_name
-                )])
+                add_embeddings_to_db.delay( 
+                    [(
+                        user_question_str_representation, 
+                        openai_response, 
+                        faq_collection_name
+                    )]
+                )
         
-        return JSONResponse(content=response_data)
+        return response_data
     
     # Why such a generic DB error handling?
     # The embedding adding and update methods already catch SPECIFIC exceptions

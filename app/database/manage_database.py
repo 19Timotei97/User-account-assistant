@@ -85,19 +85,21 @@ def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
     return None
 
 
-def get_embeddings_from_collection(collection: str) -> List[Tuple[str, np.ndarray, str]]:
+def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Tuple[str, np.ndarray, str]]:
     """
     Retrieves all embeddings from a specific collection.
 
     :param collection: The collection to retrieve the embeddings from.
+    :param limit: The maximum number of embeddings to retrieve.
     :return: A list of tuples containing the content (question), embedding and the answer.
     """
     try:
         # Run the SQL query using the local session
         with get_db_session() as session:
             results = session.query(Embedding) \
-                             .filter(Embedding.collection == collection) \
-                             .all()
+                                .filter(Embedding.collection == collection) \
+                                .limit(limit) \
+                                .all()
 
             # Return the list of existing embeddings in the collection
             return [
@@ -249,6 +251,7 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
     :return: None
     """
     try:
+        # Run the SQL query using the local Session
         with get_db_session() as session:
             batch_size = int(settings.batch_size)
 
@@ -270,7 +273,7 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
                         existing_embedding.embedding = embedding
                         existing_embedding.answer = answer
                     else:
-                        logging.info(f'Embedding for content {content} did not exist in collection {collection}. Adding it now...')
+                        logging.info(f"Embedding for content '{content}' did not exist in collection {collection}. Adding it now...")
 
                         # If it didn't, add the new embedding
                         add_embedding_to_db(content, answer, collection)
@@ -290,7 +293,10 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
         raise DatabaseOperationError(f"Unexpected error when updating embeddings in database: {update_excep}")
 
 
-def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) -> Tuple[Optional[str], Optional[str], float]:
+def search_for_similarity_in_db(
+        query_embedding: np.ndarray, 
+        collection: str
+    ) -> Tuple[Optional[str], Optional[str], float]:
     """
     Searches for the most similar embedding to the query embedding directly in the database.
 
@@ -313,11 +319,12 @@ def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) ->
         # Run the SQL query using the local Session
         with get_db_session() as session:
             # A bit of a hack to be able to use pgvector's <=> operator in SQLAlchemy
-            # Retrieve the underlying DBAPI connection
-            connection = session.connection().connection
+            # Retrieve the underlying DBAPI connection from the SQLAlchemy engine
+            raw_connection = session.connection().connection
 
             # Create a cursor which returns results as dictionaries
-            with connection.cursor(cursor_factory=RealDictCursor) as curr:
+            with raw_connection.cursor(cursor_factory=RealDictCursor) as curs:
+
                 # Query to perform similarity search using pgvector
                 search_query = """
                 SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
@@ -328,13 +335,13 @@ def search_for_similarity_in_db(query_embedding: np.ndarray, collection: str) ->
                 """
 
                 # Execute the query using the cursor
-                curr.execute(
+                curs.execute(
                     search_query,
                     (query_embedding, collection)
                 )
 
                 # Grab a single result from the query
-                result = curr.fetchone()
+                result = curs.fetchone()
 
             # If we actually get a result
             if result:

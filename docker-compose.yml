@@ -42,8 +42,10 @@ services:
     build: .
     command: celery -A celery_config.tasks.celery worker --loglevel=info
     depends_on:
-      - redis
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     user: appuser

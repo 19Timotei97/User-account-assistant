@@ -3,6 +3,12 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+"""
+This script defines the environment variables and configuration for the application.
+It uses the Pydantic library to define the settings and the lru_cache decorator to cache the settings object.
+"""
+
+
 class Settings(BaseSettings):
     """
     This class defines the settings for the application, including environment variables and configuration.
@@ -52,6 +58,9 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """
-    This function returns the settings instance, using the lru_cache decorator to improve performance.
+    This method returns the settings for the application.
+    It uses the lru_cache decorator to cache the settings object for better performance.
+
+    :return: Settings
     """
     return Settings()

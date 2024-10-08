@@ -60,9 +60,9 @@ def create_database_if_not_exists() -> None:
         default_database_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/postgres"
 
         # Connect to the default database (postgres)
-        engine = create_engine(default_database_url)
+        init_engine = create_engine(default_database_url)
 
-        with engine.connect() as conn:
+        with init_engine.connect() as conn:
             # Allow database creation
             conn = conn.execution_options(isolation_level="AUTOCOMMIT")
 
@@ -75,9 +75,9 @@ def create_database_if_not_exists() -> None:
             if not database_existence.fetchone():
                 conn.execute(text("CREATE DATABASE {db_name}"))
                 logging.info(f"Database {db_name} created successfully!")
+
             else:
                 logging.info(f"Database {db_name} already exists!")
-
 
     except OperationalError as operational_excep:
         logging.error(f"OperationalError while connecting or creating the database: {operational_excep}")

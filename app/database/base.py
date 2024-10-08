@@ -1,3 +1,5 @@
+import logging
+
 # Package imports
 from contextlib import contextmanager
 from sqlalchemy import create_engine
@@ -10,6 +12,18 @@ from threading import local
 from core.config import get_settings
 from typing import Generator
 
+
+"""
+This script defines the engine and session for database operations.
+It also creates the database tables based on the defined models.
+
+It defines the 'get_db_session' method for returning a database session, which is used in the routes.
+The session is managed using a context manager to ensure proper commit and rollback operations.
+"""
+
+
+# Set the logging config
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Retrieve the Pydantic settings
 settings = get_settings()
@@ -26,48 +40,56 @@ engine = create_engine(
 # Create a session for database transactions
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Definine a a namespace that can store data specific to each thread
-thread_local = local()
-
 # Define a declarative base for the database table
 Base = declarative_base()
 
-# Create all tables defined in models (optional, can be moved to a migration script)
+# Create all tables defined in models
 Base.metadata.create_all(engine)
 
+# Definine a a namespace that can store data specific to each thread
+thread_local = local()
 
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
-    Enables context management (resource management) for the database session.
-    This ensures that no multiple sessions are created and the session is closed at the end.
-    It ensures that the session is properly committed or rolled back in case of exceptions.
-    It also defines different sessions for each thread, to ensure concurrency.
+    Provides a database session.
+    This ensures proper session management, including commit, rollback, and closure.
+    It also defines different sessions for each thread to ensure concurrency.
+    It uses the contextmanager decorator to ensure proper usage of the session in a 'with' statement.
+
+    With the @contextmanager decorator:
+        The logic before the yield acts as the __enter__ method.
+        The logic after the yield acts as the __exit__ method, which includes cleanup operations.
 
     :return: A database session
     """
     # If the thread already defined a session, use that one
-    if hasattr(thread_local, 'session'):
+    if hasattr(thread_local, 'session') and thread_local.session is not None:
         yield thread_local.session
+        return
     
-    else:
-        # Define a new database session
-        db_session = SessionLocal()
+    # Define a new database session
+    db_session = SessionLocal()
 
-        # Assign the session to the current thread
-        thread_local.session = db_session
+    # Assign the session to the current thread
+    thread_local.session = db_session
 
-        try:
-            # Retrieve and commit transactions
-            yield db_session
-            db_session.commit()
-            
-        except Exception:
-            # In case any exception occurs, rollback changes
-            db_session.rollback()
-        finally:
-            # Close and remove the session
-            db_session.close()
+    try:
+        # Retrieve and commit transactions
+        yield db_session # Yield control to the block inside the 'with' statement
+        db_session.commit()
+        
+    except Exception as session_excep:
+        # In case any exception occurs, rollback changes
+        db_session.rollback()
+        
+        logging.error(f"Error occurred in database session: {session_excep}")
+        
+        raise session_excep
+    
+    finally:
+        # Close and remove the session
+        db_session.close()
 
-            # Delete the session from the thread
-            del thread_local.session
+        # Delete the session from the thread
+        del thread_local.session

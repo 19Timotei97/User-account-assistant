@@ -11,13 +11,17 @@ This script defines the table models for the contextual FAQ assistant.
 It includes the Embedding class, which represents the embeddings table in the database and the columns for the table, 
     including the content, embedding, answer, and collection.
 The Embedding class also includes a relationship with the Collection class, which is not used in this implementation.
-The Collection class is used to store the collection names and is not used in this implementation.
 """
 
 
 # TODO: check if this could be a feature, a different table 'collections'
 # Collection table definition
 class Collection(Base):
+    """
+    The Collection class defines the ORM model and represents the collections table in the database.
+    It inherits from the Base class and defines the columns for the table.
+    This table is not used in this implementation, but it could be used to store collection names.
+    """
     __tablename__ = 'collections'
 
     id = Column(

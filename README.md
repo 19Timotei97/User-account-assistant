@@ -134,7 +134,7 @@ As external assistants, I've used **ChatGPT** (it's really great with the newest
 Regardless of the final answer, I'm very _proud_ of what I've achieved, having learned a lot, being exposed to a lot of (new and old) technologies and being motivated to do it.
 
 ## LE Updates!
-1. Switched to an in-database similarity search, which makes use of pgvector's functionality for vector cosine operation. For more info, check the newly added `search_for_similarity_in_db` method inside `app/database/manage_database.py` script.
+1. Switched to an in-database similarity search, which makes use of pgvector's functionality for vector cosine operation. For more info, check the newly added `search_for_similarity_in_db` method inside `app/database/manage_database.py` script. It makes use of `pgvector`'s `<=>` operator to compute embeddings and sorts them descendingly.
 
 ```sql
 SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
@@ -147,8 +147,8 @@ SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
 This should help in case the local database becomes quite large.
 
 2. Working on some improvements:
-* following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/.
+* following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/. **[Work in progress]**
 * better management of env variables through a setup such as: https://fastapi.tiangolo.com/advanced/settings/ **[DONE]**
 * SQLAlchemy for managing DB resources in an ORM approach **[DONE]**
-* schemas moved in a separate module and not in the main API logic (main.py)
-* endpoint output schemas to be used and objects directly from the DB served (in this particular example)
+* schemas moved in a separate module and not in the main API logic (main.py) **[DONE]**
+* endpoint output schemas to be used and objects directly from the DB served (in this particular example) **[partially DONE]** --> Some routes need a `response_class` rather than a model

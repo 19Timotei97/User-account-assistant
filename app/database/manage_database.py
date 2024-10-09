@@ -41,7 +41,7 @@ class DatabaseOperationError(Exception):
     pass
 
 
-def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
+def get_embedding_from_db(content: str, collection: str) -> Embedding:
     """
     Retrieves the embedding from the database if it exists.
 
@@ -49,10 +49,14 @@ def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
     :param collection: The collection the content belongs to.
     :return: The embedding if found, otherwise None.
     """
+    if not content or not collection:
+        logging.error("Content and collection name are required to retrieve an embedding.")
+        raise ValueError("Content and collection name cannot be empty.")
+
     try:
         with get_db_session() as session:
             # Perform a query to retrieve the embedding based on content and collection
-            result = session.query(Embedding) \
+            embedding = session.query(Embedding) \
                             .filter(Embedding.content == content, Embedding.collection == collection) \
                             .first()
             
@@ -66,13 +70,15 @@ def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
             # ).fetchone()
 
             # Retrieve the question's embedding and its associated answer
-            if result:
-                return np.array(result.embedding)
+            if not embedding:
+                logging.info(f"No embedding found for question '{content}' in collection '{collection}'.")
+            
+            return embedding
         
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
 
-        logging.error(f'Failed to retrieve embedding for question {content} in collection {collection} due to an integrity error')
+        logging.error(f"Failed to retrieve embedding for question '{content}' in collection '{collection}' due to an integrity error")
         raise integrity_excep
     
     except (DatabaseError, InterfaceError) as database_exception:
@@ -86,32 +92,36 @@ def get_embedding_from_db(content: str, collection: str) -> np.ndarray:
     return None
 
 
-def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Tuple[str, np.ndarray, str]]:
+def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Embedding]:
     """
     Retrieves all embeddings from a specific collection.
 
     :param collection: The collection to retrieve the embeddings from.
     :param limit: The maximum number of embeddings to retrieve.
-    :return: A list of tuples containing the content (question), embedding and the answer if found else None.
+    :return: A list of Embedding objects or None if an error occurs.
     """
+    if not collection:
+        logging.error("Collection name is required to retrieve embeddings.")
+        raise ValueError("Collection name cannot be empty.")
+
     try:
         # Run the SQL query using the local session
         with get_db_session() as session:
-            results = session.query(Embedding) \
+            embeddings = session.query(Embedding) \
                                 .filter(Embedding.collection == collection) \
                                 .limit(limit) \
                                 .all()
 
             # Return the list of existing embeddings in the collection
-            if results:
-                return [
-                    (result.content, np.array(result.embedding), result.answer) 
-                for result in results]
+            if not embeddings:
+                logging.info(f"No embeddings found for the collection '{collection}'.")
+
+            return embeddings
         
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
 
-        logging.error(f'Failed to retrieve embeddings from collection {collection} due to an integrity error')
+        logging.error(f"Failed to retrieve embeddings from collection '{collection}' due to an integrity error")
         raise integrity_excep
     
     except (DatabaseError, InterfaceError) as database_exception:
@@ -134,6 +144,10 @@ def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
     :param collection: The collection the content belongs to.
     :return: None
     """
+    if not content or not answer or not collection:
+        logging.error("Content, answer, and collection name are required to add an embedding.")
+        raise ValueError("Content, answer, and collection name cannot be empty.")
+
     try:
         # Run the SQL query using the local session
         with get_db_session() as session:
@@ -166,7 +180,7 @@ def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
 
-        logging.error(f'Failed to add embedding for question {content} in collection {collection} due to an integrity error')
+        logging.error(f"Failed to add embedding for question '{content}' in collection '{collection}' due to an integrity error")
         raise integrity_excep
 
     except (DatabaseError, InterfaceError) as database_exception:
@@ -191,6 +205,10 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
     :param items: A list of tuples containing the content (question), answer and collection for each embedding.
     :return: None
     """
+    if not items or 0 == len(items):
+        logging.error("No items provided to add embeddings.")
+        raise ValueError("Items cannot be empty.")
+
     try:
         # Run the SQL query using the local Session
         with get_db_session() as session:
@@ -221,7 +239,7 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
                         # Append it to the list of objects
                         embeddings_to_insert.append(embedding_object)
 
-                        logging.info(f'Added embedding for content {content} to the list to add to collection {collection}')
+                        logging.info(f"Added embedding for content '{content}' to the list to add to collection '{collection}'")
 
                     else:
                         logging.warning(f"Embedding for content '{content}' already exists in collection '{collection}'!")
@@ -238,7 +256,7 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
 
-        logging.error(f'Failed to add embeddings in collection {collection} due to an integrity error')
+        logging.error(f"Failed to add embeddings in collection '{collection}' due to an integrity error")
         raise integrity_excep
     
     except (DatabaseError, InterfaceError) as database_exception:
@@ -263,6 +281,10 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
     :param items: A list of tuples containing the content (question), answer and collection for each embedding.
     :return: None
     """
+    if not items or 0 == len(items):
+        logging.error("No items provided to update embeddings.")
+        raise ValueError("Items cannot be empty.")
+
     try:
         # Run the SQL query using the local Session
         with get_db_session() as session:
@@ -273,9 +295,7 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
 
                 for content, answer, collection in batch:
                     # Check if the embedding already exists in the database
-                    existing_embedding = session.query(Embedding) \
-                                                .filter(Embedding.content == content, Embedding.collection == collection) \
-                                                .first()
+                    existing_embedding = get_embedding_from_db(content, collection)
 
                     # If it existed before
                     if existing_embedding is not None:
@@ -286,13 +306,13 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
                         existing_embedding.embedding = embedding
                         existing_embedding.answer = answer
                     else:
-                        logging.info(f"Cannot update embedding for content '{content}' because it does not exist in collection {collection}!")
+                        logging.info(f"Cannot update embedding for content '{content}' because it does not exist in collection '{collection}'!")
                         return
     
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
 
-        logging.error(f'Failed to update embeddings in collection {collection} due to an integrity error')
+        logging.error(f"Failed to update embeddings in collection '{collection}' due to an integrity error")
         raise integrity_excep
 
     except (DatabaseError, InterfaceError) as database_exception:
@@ -310,7 +330,7 @@ def search_for_similarity_in_db(
         session: Session,
         query_embedding: np.ndarray, 
         collection: str
-    ) -> Tuple[Optional[str], Optional[str], float]:
+    ) -> Tuple[Embedding, float]:
     """
     Searches for the most similar embedding to the query embedding directly in the database.
 
@@ -325,10 +345,19 @@ def search_for_similarity_in_db(
     3.  Efficient Vector Search: Since the search is happening directly on the database level, it's more scalable and efficient for large datasets, 
         as it leverages the database's indexing and optimized search capabilities, rather than loading all embeddings into memory.
     
+    :param session: The database session to use for the search.
     :param query_embedding: The embedding of the query to search for.
     :param collection: The collection to search within.
-    :return: The matched content, answer, and similarity score if a match is found; otherwise None.
+    :return: An Embedding object and similarity score if a match is found; otherwise None.
     """
+    if not session:
+        logging.error("No database session provided to search for similarity.")
+        raise ValueError("Database session cannot be empty.")
+    
+    if not query_embedding or not collection:
+        logging.error("Query embedding and collection name are required to search for similarity.")
+        raise ValueError("Query embedding and collection name cannot be empty.")
+
     try:
         # A bit of a hack to be able to use pgvector's <=> operator in SQLAlchemy
         # Retrieve the underlying DBAPI connection from the SQLAlchemy engine
@@ -339,11 +368,11 @@ def search_for_similarity_in_db(
 
             # It sorts the most similar embeddings to the prompt embedding (by using pgvector's <=> operator) descendingly
             search_query = """
-            SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
-            FROM embeddings
-            WHERE collection = %s
-            ORDER BY similarity DESC
-            LIMIT 1;
+                SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
+                FROM embeddings
+                WHERE collection = %s
+                ORDER BY similarity DESC
+                LIMIT 1;
             """
 
             # Execute the query using the cursor
@@ -357,14 +386,23 @@ def search_for_similarity_in_db(
 
         # If we actually get a result
         if result:
-            # Retrieve the fields
-            matched_content = result['content']
-            matched_answer = result['answer']
+            # Retrieve the embedding for the matched content
+            embedding = get_embedding_from_db(result['content'], collection)
+
+            # Construct an Embedding object
+            similar_embedding = Embedding(
+                content=result['content'],
+                embedding=embedding,
+                answer=result['answer'],
+                collection=collection
+            )
+
+            # Retrieve the similarity score
             similarity_score = result['similarity']
 
-            logging.info(f"Similarity score: {similarity_score} for content {matched_content}")
+            logging.info(f"Similarity score: {similarity_score} for content {similar_embedding.content}")
             
-            return matched_content, matched_answer, similarity_score
+            return similar_embedding, similarity_score
     
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -380,29 +418,41 @@ def search_for_similarity_in_db(
         logging.error(f"Unexpected error when searching for similarity in the database: {similiarity_search_error}")
         raise DatabaseOperationError(f"Unexpected error when searching for similarity in the database: {similiarity_search_error}")
 
-    return None, None, 0.0
+    return None, 0.0
 
 
-def delete_embedding_from_db(content: str, collection: str) -> None:
+def delete_embedding_from_db(content: str, collection: str) -> Embedding:
     """
     Deletes the embedding from the database.
     Checks if the embedding already exists
 
     :param content: The content to delete from the database.
     :param collection: The collection the content belongs to.
-    :return: None
+    :return: The Embedding object that was deleted, or None if it didn't exist.
     """
+    if not content or not collection:
+        logging.error("Content and collection name are required to delete an embedding.")
+        raise ValueError("Content and collection name cannot be empty.")
+
     try:
+        # Prepare the embedding object that will be deleted
+        embedding_to_return = None
+        
         with get_db_session() as session:
             # Check if the embedding already exists in the database
-            embedding_to_delete = session.query(Embedding) \
-                .filter(Embedding.content == content, Embedding.collection == collection) \
-                .first()
+            embedding_to_delete = get_embedding_from_db(content, collection)
 
             # If it existed before
             if embedding_to_delete is not None:
+                # Save the embedding object that will be deleted
+                embedding_to_return = embedding_to_delete
+
+                logging.info(f"Deleting embedding for content '{content}' from collection '{collection}'")
+                
                 # Delete that embedding
                 session.delete(embedding_to_delete)
+
+                return embedding_to_return
 
             else:
                 logging.error(f'The question {content} does not have a stored embedding!')

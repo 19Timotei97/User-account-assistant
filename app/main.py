@@ -14,17 +14,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from jwt import PyJWTError
 from pathlib import Path
-from pydantic import BaseModel
 from requests import RequestException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 # Local files imports
-from auth.auth import Token, TokenData, create_access_token, get_token
+from auth.auth import create_access_token, get_token
 from core.config import get_settings
 from database.base import get_db_session
 from database.create_database import create_database_if_not_exists, setup_database
 from database.manage_database import search_for_similarity_in_db, add_embeddings_to_db, update_embeddings_in_db
+from schemas.question_schema import Question, QuestionResponse
+from schemas.token_schema import Token, TokenData
+
 from services.llm_service import OpenAI_Responder
 from services.embeddings_service import OpenAIEmbeddingsService, EmbeddingComputationError
 from utils.utils import get_openai_responder, authenticate_user, get_faq_collection_name, retrieve_locally_stored_FAQ
@@ -67,22 +69,6 @@ class AuthenticationError(Exception):
     Custom exception for authentication errors.
     """
     pass
-
-
-class Question(BaseModel):
-    """
-    Question class used by the FastAPI endpoint.
-    """
-    user_question: str
-
-
-class QuestionResponse(BaseModel):
-    source: str
-    matched_question: str
-    answer: str
-
-    class Config:
-        from_attributes = True
 
 
 def get_database_session() -> Generator[Session, None, None]:
@@ -144,7 +130,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """
     Exception handler for validation errors.
 
@@ -161,7 +147,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+async def home(request: Request) -> HTMLResponse:
     """
     Route for loading the login (home) page.
 
@@ -227,7 +213,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 
 @app.get("/question-page", response_class=HTMLResponse)
-async def ask_question_page(request: Request):
+async def ask_question_page(request: Request) -> HTMLResponse:
     """
     Renders the GET request for the question page.
 
@@ -247,7 +233,7 @@ async def ask_question(
     request: Request,
     user_question: Question,
     token: TokenData = Depends(get_token),
-    database_session: Session = Depends(get_database_session), # This would work if celery wasn't needing serializable objects, which Session isn't
+    database_session: Session = Depends(get_database_session),
     openai_responder: OpenAI_Responder = Depends(get_openai_responder),
     ) -> QuestionResponse:
     """
@@ -256,6 +242,7 @@ async def ask_question(
     :param request: The request object.
     :param user_question: The question provided by the user.
     :param token: The token data for authentication.
+    :param database_session: The database SQLAlchemy session.
     :param openai_responder: The OpenAI responder service.
     :return: The JSON response containing the matched question and answer or the OpenAI response.
     """
@@ -272,29 +259,27 @@ async def ask_question(
         question_embedding = embeddings_service.compute_embedding(user_question_str_representation)
 
         # Perform similarity search in the database using the pgvector extension
-        most_similar_result = search_for_similarity_in_db(
+        most_similar_embedding, similarity_score = search_for_similarity_in_db(
             database_session,
             question_embedding, 
             faq_collection_name
         )
 
-        if most_similar_result:
-            matched_question, answer, similarity_score = most_similar_result
-
+        if most_similar_embedding:
             # Check to see if the similarity is at least equal to the threshold
             if similarity_score >= similarity_threshold:
                 # Create the required response structure and return it
                 response_data = QuestionResponse(
                     source="local",
-                    matched_question=matched_question,
-                    answer=answer
+                    matched_question=most_similar_embedding.content,
+                    answer=most_similar_embedding.answer
                 )
 
                 # Update the matched embedding for faster retrieval next time
                 update_embeddings_in_db.delay( 
                     [(
-                        matched_question, 
-                        answer, 
+                        most_similar_embedding.content, 
+                        most_similar_embedding.answer, 
                         faq_collection_name
                     )]
                 )
@@ -310,6 +295,7 @@ async def ask_question(
                 )
         
                 # Add the new embedding to the database
+                # Using the multiple embeddings adding method in case the prompt is too large
                 add_embeddings_to_db.delay( 
                     [(
                         user_question_str_representation, 

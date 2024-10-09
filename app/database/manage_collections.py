@@ -6,7 +6,7 @@ from typing import List
 
 # Local files imports
 from .base import get_db_session
-from .models import Embedding
+from .models import Embedding, Collection
 
 
 """
@@ -26,21 +26,24 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 
-def get_collections() -> List:
+def get_collections(limit: int = 100) -> List[Collection]:
     """
     Retrieves all collections from the database.
 
+    :param limit: The maximum number of collections to retrieve.
     :return: A list of collections.
     """
     try:
         with get_db_session() as session:
             # Run the SQL query using the local session
-            result = session.query(Embedding.collection) \
+            collections = session.query(Collection.name) \
                             .distinct() \
+                            .limit(limit) \
                             .all()
 
-            # Create a list of returned collections
-            collections = [row[0] for row in result.fetchall()]
+            # Return the list of collections
+            if collections is None:
+                logging.info("No collections found in the database!")
             
             return collections
         
@@ -70,8 +73,8 @@ def add_collection(collection_name: str) -> None:
         # Run the SQL query using the local session
         with get_db_session() as session:
             # Check if the collection already exists
-            existing_collection = session.query(Embedding.collection) \
-                .filter(Embedding.collection == collection_name) \
+            existing_collection = session.query(Collection.name) \
+                .filter(Collection.name == collection_name) \
                 .first()
 
             if existing_collection:
@@ -79,14 +82,11 @@ def add_collection(collection_name: str) -> None:
                 return
 
             # Add a new embedding with the collection name
-            new_embedding = Embedding(
-                content="placeholder_content",
-                embedding=[0] * 1536,  # placeholder for embedding
-                answer="placeholder_answer",
-                collection=collection_name
+            new_collection = Collection(
+                name=collection_name
             )
 
-            session.add(new_embedding)
+            session.add(new_collection)
 
             # Attempt to commit the new embedding
             session.commit()
@@ -100,6 +100,8 @@ def add_collection(collection_name: str) -> None:
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error adding collection to database: {database_exception}")
         raise database_exception
+    
+    return
 
 
 def update_collection(old_collection_name: str, new_collection_name: str) -> None:
@@ -118,21 +120,24 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
     try:
         with get_db_session() as session:
             # Check if the old collection exists
-            old_collection = session.query(Embedding.collection) \
-                                    .filter(Embedding.collection == old_collection_name) \
+            old_collection = session.query(Collection.name) \
+                                    .filter(Collection.name == old_collection_name) \
                                     .first()
             
             if not old_collection:
-                logging.warning(f"Collection '{old_collection_name}' does not exist.")
+                logging.warning(f"Collection '{old_collection_name}' does not exist!")
                 return
 
-            # Retrieve all records with the old collection name
-            old_collection_objs = session.query(Embedding) \
+            # Update the collection with the new name
+            old_collection.name = new_collection_name
+
+            # Retrieve all embeddings from the old collection
+            update_collection_objs = session.query(Embedding) \
                                         .filter(Embedding.collection == old_collection_name) \
                                         .all()
-
-            # Update the collection name for each record
-            for obj in old_collection_objs:
+            
+            # Update their collection name to the new one
+            for obj in update_collection_objs:
                 obj.collection = new_collection_name
 
             session.commit()  # Attempt to commit the new collection name
@@ -146,6 +151,8 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error updating collection in database: {database_exception}")
         raise database_exception
+    
+    return
 
 
 def delete_collection(collection_name: str) -> None:
@@ -163,12 +170,12 @@ def delete_collection(collection_name: str) -> None:
     try:
         with get_db_session() as session:
             # Check if the collection exists before attempting to delete
-            collection_to_delete = session.query(Embedding.collection) \
-                                    .filter(Embedding.collection == collection_name) \
+            collection_to_delete = session.query(Collection.name) \
+                                    .filter(Collection.name == collection_name) \
                                     .first()
 
             if not collection_to_delete:
-                logging.warning(f"Collection '{collection_name}' does not exist.")
+                logging.warning(f"Collection '{collection_name}' does not exist!")
                 return
             
             # Retrieve all records with the collection name
@@ -179,6 +186,9 @@ def delete_collection(collection_name: str) -> None:
             # Update the collection name for each record
             for obj in delete_collection_objs:
                 session.delete(obj)
+
+            # Also remove the collection from the Collection table
+            session.delete(collection_to_delete)
 
             # Attempt to commit the deleted collection name
             session.commit()

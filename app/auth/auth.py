@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
 
 # Local files imports
 from core.config import get_settings
+from schemas.token_schema import TokenData
 
 
 """
@@ -26,22 +26,6 @@ settings = get_settings()
 
 # OAuth2 flow for authentication using a bearer token obtained with a password
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-class Token(BaseModel):
-    """
-    Base class for JWT tokens.
-    It defines the token and its type.
-    """
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    """
-    Base class for the token data.
-    """
-    username: Optional[str] = None
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

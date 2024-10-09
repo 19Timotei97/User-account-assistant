@@ -4,6 +4,7 @@ import numpy as np
 # Package imports
 from typing import List, Optional, Tuple
 from psycopg2.extras import RealDictCursor
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import DatabaseError, InterfaceError, IntegrityError
 
 # Local files imports
@@ -91,7 +92,7 @@ def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Tu
 
     :param collection: The collection to retrieve the embeddings from.
     :param limit: The maximum number of embeddings to retrieve.
-    :return: A list of tuples containing the content (question), embedding and the answer.
+    :return: A list of tuples containing the content (question), embedding and the answer if found else None.
     """
     try:
         # Run the SQL query using the local session
@@ -102,9 +103,10 @@ def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Tu
                                 .all()
 
             # Return the list of existing embeddings in the collection
-            return [
-                (result.content, np.array(result.embedding), result.answer) 
-            for result in results]
+            if results:
+                return [
+                    (result.content, np.array(result.embedding), result.answer) 
+                for result in results]
         
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -120,7 +122,7 @@ def get_embeddings_from_collection(collection: str, limit: int = 100) -> List[Tu
         logging.error(f"Unexpected error when retrieving embeddings from collection {collection}: {select_from_collection_excep}")
         raise DatabaseOperationError(f"Unexpected error when retrieving embeddings from collection {collection}: {select_from_collection_excep}")
     
-    return []
+    return None
 
 
 def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
@@ -139,6 +141,8 @@ def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
             existing_embedding = get_embedding_from_db(content, collection)
 
             if existing_embedding is None:
+                logging.info(f"Adding embedding for content '{content}' to collection '{collection}'...")
+
                 # Compute the embedding for the content
                 content_embedding = embeddings_service.compute_embedding(content)
 
@@ -172,6 +176,8 @@ def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
     except Exception as insert_excep:
         logging.error(f"Unexpected error when adding embedding to database: {insert_excep}")
         raise DatabaseOperationError(f"Unexpected error when adding embedding to database: {insert_excep}")
+
+    return
 
 
 @celery.task
@@ -215,14 +221,19 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
                         # Append it to the list of objects
                         embeddings_to_insert.append(embedding_object)
 
+                        logging.info(f'Added embedding for content {content} to the list to add to collection {collection}')
+
                     else:
-                        logging.warning(f"Embedding for content '{content}' already exists in collection '{collection}'.")
+                        logging.warning(f"Embedding for content '{content}' already exists in collection '{collection}'!")
+                        return
 
             # If we actually have stuff to add
             if embeddings_to_insert:
                 # Add all objects in a single batch insert
                 # SQLAlchemy automatically batches inserts with add_all()
                 session.add_all(embeddings_to_insert)
+
+                logging.info(f"Added {len(embeddings_to_insert)} embeddings to the database.")
 
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -237,6 +248,8 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
     except Exception as insert_excep:
         logging.error(f"Unexpected error when adding embeddings to database: {insert_excep}")
         raise DatabaseOperationError(f"Unexpected error when adding embeddings to database: {insert_excep}")
+
+    return
 
 
 @celery.task
@@ -273,10 +286,8 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
                         existing_embedding.embedding = embedding
                         existing_embedding.answer = answer
                     else:
-                        logging.info(f"Embedding for content '{content}' did not exist in collection {collection}. Adding it now...")
-
-                        # If it didn't, add the new embedding
-                        add_embedding_to_db(content, answer, collection)
+                        logging.info(f"Cannot update embedding for content '{content}' because it does not exist in collection {collection}!")
+                        return
     
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -292,8 +303,11 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
         logging.error(f"Unexpected error when updating embeddings in database: {update_excep}")
         raise DatabaseOperationError(f"Unexpected error when updating embeddings in database: {update_excep}")
 
+    return
+
 
 def search_for_similarity_in_db(
+        session: Session,
         query_embedding: np.ndarray, 
         collection: str
     ) -> Tuple[Optional[str], Optional[str], float]:
@@ -316,43 +330,41 @@ def search_for_similarity_in_db(
     :return: The matched content, answer, and similarity score if a match is found; otherwise None.
     """
     try:
-        # Run the SQL query using the local Session
-        with get_db_session() as session:
-            # A bit of a hack to be able to use pgvector's <=> operator in SQLAlchemy
-            # Retrieve the underlying DBAPI connection from the SQLAlchemy engine
-            raw_connection = session.connection().connection
+        # A bit of a hack to be able to use pgvector's <=> operator in SQLAlchemy
+        # Retrieve the underlying DBAPI connection from the SQLAlchemy engine
+        raw_connection = session.connection().connection
 
-            # Create a cursor which returns results as dictionaries
-            with raw_connection.cursor(cursor_factory=RealDictCursor) as curs:
+        # Create a cursor which returns results as dictionaries
+        with raw_connection.cursor(cursor_factory=RealDictCursor) as curs:
 
-                # Query to perform similarity search using pgvector
-                search_query = """
-                SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
-                FROM embeddings
-                WHERE collection = %s
-                ORDER BY similarity DESC
-                LIMIT 1;
-                """
+            # It sorts the most similar embeddings to the prompt embedding (by using pgvector's <=> operator) descendingly
+            search_query = """
+            SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
+            FROM embeddings
+            WHERE collection = %s
+            ORDER BY similarity DESC
+            LIMIT 1;
+            """
 
-                # Execute the query using the cursor
-                curs.execute(
-                    search_query,
-                    (query_embedding, collection)
-                )
+            # Execute the query using the cursor
+            curs.execute(
+                search_query,
+                (query_embedding, collection)
+            )
 
-                # Grab a single result from the query
-                result = curs.fetchone()
+            # Grab a single result from the query
+            result = curs.fetchone()
 
-            # If we actually get a result
-            if result:
-                # Retrieve the fields
-                matched_content = result['content']
-                matched_answer = result['answer']
-                similarity_score = result['similarity']
+        # If we actually get a result
+        if result:
+            # Retrieve the fields
+            matched_content = result['content']
+            matched_answer = result['answer']
+            similarity_score = result['similarity']
 
-                logging.info(f"Similarity score: {similarity_score} for content {matched_content}")
-                
-                return matched_content, matched_answer, similarity_score
+            logging.info(f"Similarity score: {similarity_score} for content {matched_content}")
+            
+            return matched_content, matched_answer, similarity_score
     
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -394,7 +406,7 @@ def delete_embedding_from_db(content: str, collection: str) -> None:
 
             else:
                 logging.error(f'The question {content} does not have a stored embedding!')
-                raise ValueError(f'Embedding for the question "{content}" not found in collection "{collection}".')
+                raise ValueError(f'Embedding for the question "{content}" not found in collection "{collection}"!')
     
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs
@@ -409,3 +421,5 @@ def delete_embedding_from_db(content: str, collection: str) -> None:
     except Exception as delete_excep:
         logging.error(f"Unexpected error when deleting embedding from database: {delete_excep}")
         raise DatabaseOperationError(f"Unexpected error when deleting embedding from database: {delete_excep}")
+
+    return

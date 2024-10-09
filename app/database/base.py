@@ -49,6 +49,7 @@ Base.metadata.create_all(engine)
 # Definine a a namespace that can store data specific to each thread
 thread_local = local()
 
+
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """
@@ -57,11 +58,11 @@ def get_db_session() -> Generator[Session, None, None]:
     It also defines different sessions for each thread to ensure concurrency.
     It uses the contextmanager decorator to ensure proper usage of the session in a 'with' statement.
 
-    With the @contextmanager decorator:
-        The logic before the yield acts as the __enter__ method.
-        The logic after the yield acts as the __exit__ method, which includes cleanup operations.
+    With the `@contextmanager` decorator:
+        - the logic **before** the `yield` acts as the `__enter__` method.
+        - the logic **after** the `yield` acts as the `__exit__` method, which includes cleanup operations.
 
-    :return: A database session
+    :return: A database session object.
     """
     # If the thread already defined a session, use that one
     if hasattr(thread_local, 'session') and thread_local.session is not None:

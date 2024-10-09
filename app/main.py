@@ -4,6 +4,7 @@ import asyncio
 # Package imports
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from typing import Generator
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.templating import Jinja2Templates
@@ -14,12 +15,14 @@ from fastapi.encoders import jsonable_encoder
 from jwt import PyJWTError
 from pathlib import Path
 from pydantic import BaseModel
-from psycopg2 import DatabaseError
 from requests import RequestException
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 # Local files imports
 from auth.auth import Token, TokenData, create_access_token, get_token
 from core.config import get_settings
+from database.base import get_db_session
 from database.create_database import create_database_if_not_exists, setup_database
 from database.manage_database import search_for_similarity_in_db, add_embeddings_to_db, update_embeddings_in_db
 from services.llm_service import OpenAI_Responder
@@ -77,6 +80,21 @@ class QuestionResponse(BaseModel):
     source: str
     matched_question: str
     answer: str
+
+    class Config:
+        from_attributes = True
+
+
+def get_database_session() -> Generator[Session, None, None]:
+    """
+    Provides a database session for FastAPI dependency injection.
+    Needed without the context manager to ensure proper session handling.
+    Uses the already defined get_db_session context manager.
+
+    :return: A database session
+    """
+    with get_db_session() as db_session:
+        yield db_session
 
 
 def store_initial_embeddings() -> None:
@@ -229,7 +247,7 @@ async def ask_question(
     request: Request,
     user_question: Question,
     token: TokenData = Depends(get_token),
-    # database_session: Session = Depends(get_db_session), # This would work if celery wasn't needing serializable objects, which Session isn't
+    database_session: Session = Depends(get_database_session), # This would work if celery wasn't needing serializable objects, which Session isn't
     openai_responder: OpenAI_Responder = Depends(get_openai_responder),
     ) -> QuestionResponse:
     """
@@ -255,6 +273,7 @@ async def ask_question(
 
         # Perform similarity search in the database using the pgvector extension
         most_similar_result = search_for_similarity_in_db(
+            database_session,
             question_embedding, 
             faq_collection_name
         )
@@ -265,12 +284,6 @@ async def ask_question(
             # Check to see if the similarity is at least equal to the threshold
             if similarity_score >= similarity_threshold:
                 # Create the required response structure and return it
-                # response_data = {
-                #     "source": "local",
-                #     "matched_question": matched_question,
-                #     "answer": answer
-                # }
-
                 response_data = QuestionResponse(
                     source="local",
                     matched_question=matched_question,
@@ -290,11 +303,6 @@ async def ask_question(
                 # If the similarity is below the threshold, return the OpenAI response
                 openai_response = openai_responder.get_response(user_question_str_representation)
 
-                # response_data = {
-                #     "source": "openai",
-                #     "matched_question": "N/A",
-                #     "answer": openai_response
-                # }
                 response_data = QuestionResponse(
                     source="openai",
                     matched_question="N/A",
@@ -315,7 +323,7 @@ async def ask_question(
     # Why such a generic DB error handling?
     # The embedding adding and update methods already catch SPECIFIC exceptions
     # Here I just add an extra layer of error handling
-    except DatabaseError as database_excep:
+    except SQLAlchemyError as database_excep:
         logging.error(f"Database error in ask-question route: {database_excep}")
         raise HTTPException(status_code=500, detail="Database error occurred while processing the question")
     

@@ -1,21 +1,27 @@
-import os
 import logging
-import tiktoken
-import json
 import numpy as np
 
 # Package imports
 from langchain_community.utils.math import cosine_similarity
-from typing import List, Optional, Tuple
+from typing import Generator, List, Tuple
+from sqlalchemy.orm import Session
 
 # Local files imports
 from core.config import get_settings
+from database.base import get_db_session
+from database.manage_database import add_embeddings_to_db
+from .faq_utils import retrieve_locally_stored_FAQ, get_faq_collection_name
 from services.llm_service import OpenAI_Responder
 
 
 """
-This script defines utility functions for the application, such as database connection creation, 
-    token truncation, OpenAI responder initialization, similarity searching and FAQ collection management.
+This module contains utility functions used throughout the application.
+
+get_openai_responder: Returns an instance of the OpenAI_Responder class with parameters from environment variables.
+get_database_session: Provides a database session for FastAPI dependency injection.
+search_for_similarity: Finds the most similar embedding to the query embedding in the list of embeddings.
+    Computes the cosine similarity between the query embedding and each embedding in the list.
+store_initial_embeddings: Stores the initial embeddings of the FAQ database in the database.
 """
 
 
@@ -24,31 +30,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Retrieve the environment variables as settings
 settings = get_settings()
-
-
-def limit_token_length(text: str, max_tokens: int = 2000) -> str:
-    """
-    Limits the number of tokens in the given text to the specified maximum for token-efficient embedding generation.
-    It uses the tiktoken encoding to count the tokens and truncates the text accordingly.
-
-    :param text: The text to limit the tokens for.
-    :param max_tokens: The maximum number of tokens to keep.
-    :return: The text with the limited number of tokens.
-    """
-    encoding = tiktoken.get_encoding("cl100k_base")
-    tokens = encoding.encode(text)
-
-    if len(tokens) > max_tokens:
-        logging.warning("The provided text exceeds 2000 tokens!")
-        
-        logging.info(f"Truncating text to {max_tokens} tokens.")
-
-        limited_tokens = tokens[:max_tokens]
-        limited_text = encoding.decode(limited_tokens)
-
-        return limited_text
-    
-    return text
 
 
 def get_openai_responder() -> OpenAI_Responder:
@@ -70,27 +51,16 @@ def get_openai_responder() -> OpenAI_Responder:
     )
 
 
-def get_faq_collection_name() -> str:
+def get_database_session() -> Generator[Session, None, None]:
     """
-    Retrieves the collection name for the provided FAQs from the environment variable.
-    
-    :return: The collection name as a string.
+    Provides a database session for FastAPI dependency injection.
+    Needed without the context manager to ensure proper session handling.
+    Uses the already defined get_db_session context manager.
+
+    :return: A database session
     """
-    return settings.faq_collection_name
-
-
-def retrieve_locally_stored_FAQ() -> list:
-    """
-    Retrieves the locally stored FAQ database.
-
-    :return: A list of dictionaries containing the FAQ data.
-    """    
-    faq_json_file = os.path.join(os.path.dirname(__file__), 'FAQ_database.json')
-    
-    faq_local_database_loader = FAQ_Loader(faq_json_file=faq_json_file, limit=100)
-    faq_local_database = faq_local_database_loader.load_faq_database()
-    
-    return faq_local_database
+    with get_db_session() as db_session:
+        yield db_session
 
 
 def search_for_similarity(query_embedding: np.ndarray, embeddings: List[np.ndarray]) -> Tuple[int, float]:
@@ -121,57 +91,17 @@ def search_for_similarity(query_embedding: np.ndarray, embeddings: List[np.ndarr
     return most_similar_index, similarity_score
 
 
-def authenticate_user(username: str, password: str) -> dict:
+def store_initial_embeddings() -> None:
     """
-    Dummy authentication function.
+    Stores the initial embeddings of the FAQ database in the database.
+    Uses the OpenAIEmbeddingsService to compute the embeddings.
 
-    :param username: The username to authenticate.
-    :param password: The password to authenticate.
-    :return: A dictionary containing the username if the credentials are valid, otherwise an empty dictionary.
+    :return: None
     """
-    if username == "user" and password == "test":
-        return {"username": username}
+    faq_local_database = retrieve_locally_stored_FAQ()
     
-    return {}
+    faq_embeddings = [(item['question'], item['answer'], get_faq_collection_name()) for item in faq_local_database]
+    
+    logging.info('Storing initial FAQ embeddings in the database...')
 
-
-class FAQ_Loader:
-    """
-    Reads and retrieves the local FAQ database stored as JSON.
-    """
-    def __init__(self, faq_json_file: str, limit: Optional[int]) -> None:
-        """
-        Initializes the FAQ local reader.
-
-        :param faq_json_file (str): The path to the JSON file containing the FAQ database.
-        :param limit (Optional[Int]): Optional, the maximum number of FAQ entries to load.
-        :return: None
-        """
-        self.limit = limit
-        self.faq_json_file = faq_json_file
-
-
-    def load_faq_database(self) -> list:
-        """
-        Loads the FAQ database from the JSON file up until the specified limit.
-
-        :return: A list of dictionaries representing the FAQ entries.
-        """
-        try:
-            with open(self.faq_json_file, "r") as faq_data:
-                faqs = json.load(faq_data)
-
-            if self.limit is not None:
-                faqs = faqs['faqs'][:self.limit]
-            else:
-                faqs = faqs['faqs']
-
-            return faqs
-
-        except FileNotFoundError as file_not_found_excep:
-            logging.error(f"FAQ file not found: {self.faq_json_file}")
-            raise file_not_found_excep
-
-        except json.JSONDecodeError as json_decode_excep:
-            logging.error(f"Error decoding JSON from file: {self.faq_json_file}")
-            raise json_decode_excep
+    add_embeddings_to_db(faq_embeddings)

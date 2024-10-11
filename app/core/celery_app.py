@@ -4,11 +4,11 @@ import logging
 from celery import Celery
 
 # Local files imports
-from core.config import get_settings
+from .config import get_settings
 
 
 """
-This script is defining the Celery service for the application's async task processing.
+This module is defining the Celery service for the application's async task processing.
 It defines the Celery instance and configures the results backend.
 It also autodiscovers the tasks in the database.manage_database module, for async embeddings processing.
 """
@@ -28,6 +28,7 @@ if not broker_url:
     raise EnvironmentError("CELERY_BROKER_URL environment variable is not set!")
 if not result_backend:
     raise EnvironmentError("CELERY_RESULT_BACKEND environment variable is not set!")
+
 
 # Set up the Celery application
 celery = Celery('tasks', broker=broker_url)

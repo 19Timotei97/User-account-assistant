@@ -10,9 +10,11 @@ from core.config import get_settings
 
 
 """
-This script sets up the database and tables for the contextual FAQ assistant.
+This module sets up the database and tables for the contextual FAQ assistant.
+
 It first creates the database if it doesn't exist, then sets up the necessary tables.
-The script also includes a retry mechanism for table creation in case of errors.
+
+It also includes a retry mechanism for table creation in case of errors.
 """
 
 

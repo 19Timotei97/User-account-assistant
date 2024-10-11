@@ -7,9 +7,11 @@ from .base import Base
 
 
 """
-This script defines the table models for the contextual FAQ assistant.
+This module defines the table models for the contextual FAQ assistant.
+
 It includes the Embedding class, which represents the embeddings table in the database and the columns for the table, 
     including the content, embedding, answer, and collection.
+
 The Embedding class also includes a relationship with the Collection class, which is not used in this implementation.
 """
 

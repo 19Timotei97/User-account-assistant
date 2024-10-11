@@ -1,4 +1,5 @@
 import logging
+import tiktoken
 import numpy as np
 
 # Package imports
@@ -8,14 +9,15 @@ from langchain_openai import OpenAIEmbeddings
 
 # Local files imports
 from core.config import get_settings
-from utils.utils import limit_token_length
 
 
 """
-This script implements the EmbeddingsService class and its subclasses.
+This module implements the EmbeddingsService class and its subclasses.
+
 The EmbeddingsService class is a base class for embeddings services, and it defines the compute_embedding method.
+
 The OpenAIEmbeddingsService class is a subclass of EmbeddingsService that uses OpenAI's Embeddings model to generate embeddings for text.
-It is implemented as a singleton to avoid re-initialization of the embeddings model.
+    It is implemented as a singleton to avoid re-initialization of the embeddings model.
 """
 
 
@@ -24,6 +26,32 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Retrieve the environment variables as settings
 settings = get_settings()
+
+
+def limit_token_length(text: str, max_tokens: int = 2000) -> str:
+    """
+    Helper method.
+    Limits the number of tokens in the given text to the specified maximum for token-efficient embedding generation.
+    It uses the tiktoken encoding to count the tokens and truncates the text accordingly.
+
+    :param text: The text to limit the tokens for.
+    :param max_tokens: The maximum number of tokens to keep.
+    :return: The text with the limited number of tokens.
+    """
+    encoding = tiktoken.get_encoding("cl100k_base")
+    tokens = encoding.encode(text)
+
+    if len(tokens) > max_tokens:
+        logging.warning("The provided text exceeds 2000 tokens!")
+        
+        logging.info(f"Truncating text to {max_tokens} tokens.")
+
+        limited_tokens = tokens[:max_tokens]
+        limited_text = encoding.decode(limited_tokens)
+
+        return limited_text
+    
+    return text
 
 
 class EmbeddingComputationError(Exception):

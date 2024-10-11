@@ -37,7 +37,7 @@ But it can fail to completely refuse to respond to non IT-related questions (sti
 
 ## Project structure
 
-The project follows the following structure:
+The project has the following structure and now follows FastAPI guidelines:
 
 ```bash
 contextual_faq_assistant/
@@ -45,75 +45,106 @@ contextual_faq_assistant/
 ├── app/
 │   ├── auth/
 │   │   ├── __init__.py
-│   │   ├── auth.py    # Authentication logic
+│   │   ├── auth_utils.py         # Authentication logic utility methods
 │   │
-│   ├── celery_config/
+│   ├── core/
 │   │   ├── __init__.py
-│   │   ├── tasks.py   # Celery configuration
+│   │   ├── celery_app.py         # Celery configuration
+│   │   ├── config.py             # Pydantic settings
+│   │   ├── handlers.py           # The FastAPI error handler
+│   │   ├── lifespan.py           # The FastAPI lifespan definition
+│   │   ├── templates.py          # The Jinja2 templates definition
 │   │
 │   ├── database/
-│   │   ├── create_database.py  # Database creation
-│   │   ├── manage_database.py  # Read, Update, Delete for embeddings
+│   │   ├── __init__.py
+│   │   ├── base.py               # Database engine and session management
+│   │   ├── create_database.py    # Database creation
 │   │   ├── manage_collections.py # Read, Update, Delete for collections
+│   │   ├── manage_database.py    # Read, Update, Delete for embeddings
+│   │   ├── models.py             # The SQLAlchemy ORM models definition
+│   │
+│   ├── routers/
+│   │   ├── __init__.py
+│   │   ├── auth.py               # FastAPI routes for authentication
+│   │   ├── collections.py        # FastAPI routes for collections management
+│   │   ├── questions.py          # FastAPI routes for question page and responses
+│   │
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── collection_schema.py  # Pydantic model for collections
+│   │   ├── error_schema.py       # Pydantic model for errors detail
+│   │   ├── question_schema.py    # Pydantic model for questions and responses
+│   │   ├── token_schema.py       # Pydantic model for token representation and token data
 │   │
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── embeddings_service.py  # The Embeddings model
-│   │   ├── llm_service.py         # The LangChain chain and OpenAI model
+│   │   ├── embeddings_service.py # The Embeddings model
+│   │   ├── llm_service.py        # The LangChain chain and OpenAI model
 │   │
 │   ├── templates/
-│   │   ├── login.html    # Serves the login page
-│   │   ├── question.html # Serves the QA page
+│   │   ├── login.html            # Serves the login page
+│   │   ├── question.html         # Serves the QA page
 │   │
 │   ├── utils/
 │   │   ├── __init__.py
-│   │   ├── utils.py          # Different utility functions
-│   │   ├── FAQ_database.json # Provided FAQ database
+│   │   ├── FAQ_database.json     # Provided FAQ database
+│   │   ├── faq_utils.py          # Utility functions for reading the provided FAQ
+│   │   ├── utils.py              # Different utility functions
 │   │
 │   ├── __init__.py
-│   ├── main.py     # Entry point for the app
+│   ├── dependencies.py           # FastAPI dependencies module
+│   ├── main.py                   # Entry point for the app
 │
-├── screenshots/        # Screenshots for this file
-│── .env.example        # Environment variables file, needs to be renamed to .env after setting it up
-├── docker-compose.yml  # Defines the Docker services
-├── Dockerfile          # The Docker image
+├── screenshots/                  # Screenshots for this file
+│── .env.example                  # Environment variables file, set it and rename to .env
+├── docker-compose.yml            # Defines the Docker services
+├── Dockerfile                    # The Docker image
 ├── README.md
-├── requirements.txt    # The project's package requirements
+├── requirements.txt              # The project's package requirements
 ```
 
-When it comes to the folder structure, I've tried to keep it as logical and clean as possible. Hopefully I don't need to go into too much detail here, having named each script and folder as descriptive as possible.
+When it comes to the folder structure, I've tried to keep it as logical and clean as possible. Hopefully I don't need to go into too much detail here, having named each module and folder as descriptive as possible.
 
-1. The **auth** folder contains the script which deals with _Authentication on FastAPI's endpoints using its dependency mechanism (Depends(get_token))_. It creates, verifies and retrieves that token in order to let the user access the assistant.
+1. The **auth** folder contains the utility module which deals with token creation and verification to let the user access the assistant.
 
-2. The **celery_config** folder defines the _Celery_ app, mainly the _tasks.py_ script defining and configuring it. Having used it only for adding and updating embeddings asynchronously, it only autodiscovers the those tasks. I've used Redis as the backend message broker. It's also my first time using that, so I've learned something new :)
+2. The **core** folder contains the core functionalities, like the Celery app, Pydantic settings configuration, FastAPI error handler, the app's lifespan and the Jinja2 FastAPI HTML templates.
+The __celery_app.py__ module defines the _Celery_ app and configures it. Having used it only for adding and updating embeddings asynchronously, it only autodiscovers the those tasks. I've used Redis as the backend message broker. It's also my first time using that, so I've learned something new :)
 
 ![Image](screenshots/celery_async.PNG)
 
 3. The **database** folder deals with everything about the _PostgreSQL_ database, used for _info and embedding storage_. Since I've only wanted to create the PoC for such a complex app, I've only used the database for this, and not for user data storage (username, password, email etc.) Of course, this should be done in a production environment, but I think it will suffice for this assignment. I would personally used a vector database, like _Chroma_ or _Pinecone_ for the embeddings, but since we would also need to retrieve the answer, I understand the choice (even though the metadata of one of those options would work too, I think). The scripts included in this folder are responsible for:
 
-    3.1 Creating the initial _database_ and setting up the tables for storing the questions, their embeddings, their answers and the collection for each question.
+    3.1 A base module dealing with defining the database engine and its session, tied to SQLAlchemy.
+    
+    3.2 Creating the initial _database_ and setting up the tables for storing the questions, their embeddings, their answers and the collection for each question.
 
-    3.2 Managing the _database_, selecting the desired embeddings, inserting into the desired table with the corresponding values, updating values and potentially deleting embeddings and their data
+    3.3 Managing the _collections_, should this is desired. I didn't used this module, since I only dealt with a single collection, but should more be needed, the implementation is there.
 
-    3.3 Managing the _collections_, should this is desired. I didn't used this script, since I only dealt with a single collection, but should more be needed, the implementation is there.
+    3.4 Managing the _database_, selecting the desired embeddings, inserting into the desired table with the corresponding values, updating values and potentially deleting embeddings and their data
 
+    3.5 The SQLAlchemy models for table definition.
+    
 ![Image](screenshots/postgresql.PNG)
 
-4. The **services** folder is responsible with:
+4. The **schemas** folders defines the schemas used for questions, collections, errors and token, Pydantic style (just like FastAPI likes it).
 
-    4.1. Creating the embedding model, which also computes the embedding of a question  / prompt. It's implemented as a _singleton_ to avoid multiple initialization, it uses _caching_ to avoid multiple calls to the API, and it also _limits the token length_ for lengthy questions, using the _tiktoken_ tokenizer.
+5. The **services** folder is responsible with:
 
-    4.2 Creating the OpenAI responder, implemented with a _LangChain RunnableBranch_, which theoretically deals with questions regarding IT or account management and refusing to respond to unrelated questions. As much as I tried, I didn't managed to completely make it refuse answering to such kind of questions, but the implementation is done according to the official documentation. I've even added the LangChain recommended implementation, which suggests using a route function instead of a now considered Legacy RunnableBranch. I'm happy that I created a helpful IT assistant, but I'm a bit sad that it's **WAY** too helpful.
+    5.1. Creating the embedding model, which also computes the embedding of a question  / prompt. It's implemented as a _singleton_ to avoid multiple initialization, it uses _caching_ to avoid multiple calls to the API, and it also _limits the token length_ for lengthy questions, using the _tiktoken_ tokenizer.
 
-5. The **templates** folder simply defines the _login.html_ page, used for user authentication and _question.html_ which is used throughout the application uptime. A lot of time went debugging this part, part of it being because of my lack of working with token authentication and part of it representing the passing of the token from the login page to the _ask-question_ FastAPI route. It was fun though, and I learned a lot.
+    5.2 Creating the OpenAI responder, implemented with a _LangChain RunnableBranch_, which theoretically deals with questions regarding IT or account management and refusing to respond to unrelated questions. As much as I tried, I didn't managed to completely make it refuse answering to such kind of questions, but the implementation is done according to the official documentation. I've even added the LangChain recommended implementation, which suggests using a route function instead of a now considered Legacy RunnableBranch. I'm happy that I created a helpful IT assistant, but I'm a bit sad that it's **WAY** too helpful.
 
-6. Finally, the **utils** folder defines the _FAQ_database.json_ with the provided questions, and the _utils.py_ script, defining the utility functions. I hope the methods are descriptive enough for me not to go into details here.
+6. The **templates** folder simply defines the _login.html_ page, used for user authentication and _question.html_ which is used throughout the application uptime. A lot of time went debugging this part, part of it being because of my lack of working with token authentication and part of it representing the passing of the token from the login page to the _ask-question_ FastAPI route. It was fun though, and I learned a lot.
 
-7. The _main.py_ script is used for the FastAPI app, which first initializes the database, and stores the initial FAQ embeddings, deals with the token authentication and also serves the question answering route. I hope the comments and method descriptions are fully describing the intent behind every one of them.
+7. Finally, the **utils** folder defines the _FAQ_database.json_ with the provided questions, the _faq_utils.py_ module for loading and handling the provided database, and the _utils.py_ module, defining the utility functions. I hope the methods are descriptive enough for me not to go into details here.
 
-8. I've also used a _docker-compose.yml_ file to define the services used for the application, as well as the postgres volume used for storing the embeddings. It is highly dependent on the _.env_ file, which defines many environment variables, including the OpenAI API key and model params, celery backend, database authentication and the secret key used for token generation.
+8. The _dependencies.py_ module defines the FastAPI routes dependencies, in this case the _get_token_ one, since this is **mandatory** if a user wants to use the assistant.
 
-9. There is a _Dockerfile_ too, used for running the app as a Docker image, in conjunction with the _docker-compose.yml_ file. It uses the _python:3.8-slim_ image as base, it copies the necessary files, installs the requirements, correctly uses a non-root user (since celery can complain about it) and runs the main uvicorn app on port 8080.
+9. The _main.py_ module is used for the FastAPI app, which first initializes the database, and stores the initial FAQ embeddings, deals with the token authentication and also serves the question answering route. I hope the comments and method descriptions are fully describing the intent behind every one of them.
+
+10. I've also used a _docker-compose.yml_ file to define the services used for the application, as well as the postgres volume used for storing the embeddings. It is highly dependent on the _.env_ file, which defines many environment variables, including the OpenAI API key and model params, celery backend, database authentication and the secret key used for token generation.
+
+11. There is a _Dockerfile_ too, used for running the app as a Docker image, in conjunction with the _docker-compose.yml_ file. It uses the _python:3.8-slim_ image as base, it copies the necessary files, installs the requirements, correctly uses a non-root user (since celery can complain about it) and runs the main uvicorn app on port 8080.
 
 
 ## Things that can be improved
@@ -134,7 +165,7 @@ As external assistants, I've used **ChatGPT** (it's really great with the newest
 Regardless of the final answer, I'm very _proud_ of what I've achieved, having learned a lot, being exposed to a lot of (new and old) technologies and being motivated to do it.
 
 ## LE Updates!
-1. Switched to an in-database similarity search, which makes use of pgvector's functionality for vector cosine operation. For more info, check the newly added `search_for_similarity_in_db` method inside `app/database/manage_database.py` script. It makes use of `pgvector`'s `<=>` operator to compute embeddings and sorts them descendingly.
+1. Switched to an in-database similarity search, which makes use of pgvector's functionality for vector cosine operation. For more info, check the newly added `search_for_similarity_in_db` method inside `app/database/manage_database.py` module. It makes use of `pgvector`'s `<=>` operator to compute embeddings and sorts them descendingly.
 
 ```sql
 SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
@@ -147,7 +178,7 @@ SELECT content, answer, 1 - (embedding <=> %s::vector) AS similarity
 This should help in case the local database becomes quite large.
 
 2. Working on some improvements:
-* following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/. **[Work in progress]**
+* following the FastAPI structure, which is recommended here: https://fastapi.tiangolo.com/tutorial/bigger-applications/. **[DONE]**
 * better management of env variables through a setup such as: https://fastapi.tiangolo.com/advanced/settings/ **[DONE]**
 * SQLAlchemy for managing DB resources in an ORM approach **[DONE]**
 * schemas moved in a separate module and not in the main API logic (main.py) **[DONE]**

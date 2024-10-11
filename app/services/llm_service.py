@@ -16,7 +16,8 @@ from core.config import get_settings
 
 
 """
-This script defines the Responder class and its subclasses, which are used to generate responses to questions.
+This module defines the Responder class and its subclasses, which are used to generate responses to questions.
+
 The OpenAI_Responder class uses the OpenAI API and LangChain to route and respond to questions.
 """
 

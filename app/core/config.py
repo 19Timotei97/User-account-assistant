@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 """
-This script defines the environment variables and configuration for the application.
+This module defines the environment variables and configuration for the application.
 It uses the Pydantic library to define the settings and the lru_cache decorator to cache the settings object.
 """
 

@@ -4,7 +4,7 @@ import jwt
 # Package imports
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
 # Local files imports
@@ -13,8 +13,8 @@ from schemas.token_schema import TokenData
 
 
 """
-This script defines the authentication logic for the application.
-It includes the creation of access tokens, token verification, and token data management.
+This module defines the authentication logic for the application.
+It includes functions for creating access tokens and verifying them, as well as defining the OAuth2 scheme for authentication.
 """
 
 
@@ -115,37 +115,15 @@ def verify_access_token(token: str, credentials_exception: HTTPException) -> Tok
         raise credentials_exception
 
 
-def get_token(request: Request) -> TokenData:
+def authenticate_user(username: str, password: str) -> dict:
     """
-    Retrieves the token from the request header and verifies it.
+    Dummy authentication function.
 
-    :param request: The request object.
-    :return: The token data.
+    :param username: The username to authenticate.
+    :param password: The password to authenticate.
+    :return: A dictionary containing the username if the credentials are valid, otherwise an empty dictionary.
     """
-    try:
-        auth_header = request.headers.get("Authorization")
-        
-        if not auth_header:
-            raise HTTPException(status_code=401, detail="Authorization header missing")
-        
-        scheme, _, token = auth_header.partition(" ")
-        
-        # Ensure the Authentication header is ok
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Invalid authentication scheme")
-        
-        if not token:
-            raise HTTPException(status_code=401, detail="Token missing")
-        
-        return verify_access_token(
-            token=token, 
-            credentials_exception=HTTPException(status_code=401, detail="Invalid token")
-        )
+    if username == "user" and password == "test":
+        return {"username": username}
     
-    except HTTPException as http_excep:
-        logging.error(f"HTTPException during token retrieval: {http_excep.detail}")
-        raise
-
-    except Exception as token_retrieval_excep:
-        logging.error(f"Unexpected error during token retrieval: {token_retrieval_excep}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    return {}

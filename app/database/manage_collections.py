@@ -10,9 +10,10 @@ from .models import Embedding, Collection
 
 
 """
-This script provides functions to manage collections in the database.
+This module provides functions to manage collections in the database.
 
 Functions:
+- get_collection(collection_name: str): Retrieves a collection from the database by its name.
 - get_collections(): Retrieves all collections from the database.
 - add_collection(collection_name: str): Adds a new collection to the database.
 - update_collection(old_collection_name: str, new_collection_name: str): Updates the collection in the database 
@@ -25,13 +26,45 @@ Functions:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+def get_collection_from_db(collection_name: str) -> Collection:
+    """
+    Retrieves a collection from the database by its name.
 
-def get_collections(limit: int = 100) -> List[Collection]:
+    :param collection_name: The name of the collection to retrieve.
+    :return: The collection object if found else None.
+    """
+    try:
+        with get_db_session() as session:
+            # Run the SQL query using the local session
+            collection = session.query(Collection) \
+                            .filter(Collection.name == collection_name) \
+                            .first()
+
+            if collection is None:
+                logging.info(f"Collection '{collection_name}' not found in the database!")
+                return None
+
+            return collection
+
+    except IntegrityError as integrity_excep:
+        session.rollback()  # Rollback if an unexpected integrity error occurs
+
+        logging.error(f"Failed to retrieve collection '{collection_name}' due to an integrity error.")
+        raise integrity_excep
+
+    except (DatabaseError, InterfaceError) as database_exception:
+        logging.error(f"Error retrieving collection '{collection_name}' from database: {database_exception}")
+        raise database_exception
+
+    return
+
+
+def get_collections_from_db(limit: int = 100) -> List[Collection]:
     """
     Retrieves all collections from the database.
 
     :param limit: The maximum number of collections to retrieve.
-    :return: A list of collections.
+    :return: A list of collections if found else None.
     """
     try:
         with get_db_session() as session:
@@ -44,6 +77,7 @@ def get_collections(limit: int = 100) -> List[Collection]:
             # Return the list of collections
             if collections is None:
                 logging.info("No collections found in the database!")
+                return None
             
             return collections
         
@@ -56,9 +90,11 @@ def get_collections(limit: int = 100) -> List[Collection]:
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error retrieving collections from database: {database_exception}")
         raise
+    
+    return
 
 
-def add_collection(collection_name: str) -> None:
+def add_collection_to_db(collection_name: str) -> None:
     """
     Adds a new collection to the database if it doesn't already exist.
 
@@ -104,7 +140,7 @@ def add_collection(collection_name: str) -> None:
     return
 
 
-def update_collection(old_collection_name: str, new_collection_name: str) -> None:
+def update_collection_in_db(old_collection_name: str, new_collection_name: str) -> None:
     """
     Updates the collection in the database with the new collection name.
     Checks if the old collection exists before attempting to update it.
@@ -126,7 +162,7 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
             
             if not old_collection:
                 logging.warning(f"Collection '{old_collection_name}' does not exist!")
-                return
+                return None
 
             # Update the collection with the new name
             old_collection.name = new_collection_name
@@ -155,9 +191,9 @@ def update_collection(old_collection_name: str, new_collection_name: str) -> Non
     return
 
 
-def delete_collection(collection_name: str) -> None:
+def delete_collection_from_db(collection_name: str) -> None:
     """
-    Deletes the collection from the database.
+    Deletes the collection from the database and the associated embeddings.
     Checks if the collection exists before attempting to delete it.
 
     :param collection_name: The name of the collection to delete.
@@ -176,7 +212,7 @@ def delete_collection(collection_name: str) -> None:
 
             if not collection_to_delete:
                 logging.warning(f"Collection '{collection_name}' does not exist!")
-                return
+                return None
             
             # Retrieve all records with the collection name
             delete_collection_objs = session.query(Embedding) \
@@ -202,3 +238,5 @@ def delete_collection(collection_name: str) -> None:
     except (DatabaseError, InterfaceError) as database_exception:
         logging.error(f"Error deleting collection from database: {database_exception}")
         raise
+
+    return

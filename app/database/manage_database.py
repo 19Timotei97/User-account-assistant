@@ -2,24 +2,29 @@ import logging
 import numpy as np
 
 # Package imports
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 from psycopg2.extras import RealDictCursor
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import DatabaseError, InterfaceError, IntegrityError
 
 # Local files imports
 from .base import get_db_session
-from celery_config.tasks import celery
+from core.celery_app import celery
 from core.config import get_settings
 from .models import Embedding
 from services.embeddings_service import OpenAIEmbeddingsService
 
 
 """
-This script provides functions to interact with the database.
-It handles the creation of the database connection and the storage of embeddings.
-The functions are designed to be used in the context of the application.
-The database is used to store the embeddings of the content to avoid recomputing them each time the application is run.
+This module provides functions to interact with the database.
+
+Functions:
+- get_embedding_from_db(content: str, collection: str): Retrieves the embedding from the database if it exists.
+- get_embeddings_from_collection(collection: str): Retrieves all embeddings from a specific collection.
+- add_embedding(content: str, embedding: np.ndarray, answer: str, collection: str): Adds a new embedding to the database.
+- update_embedding(content: str, new_embedding: np.ndarray, new_answer: str, collection: str): Updates an existing embedding in the database.
+- delete_embedding(content: str, collection: str): Deletes an embedding from the database.
+- delete_collection(collection: str): Deletes a collection and its associated embeddings from the database.
 """
 
 
@@ -251,7 +256,7 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
                 # SQLAlchemy automatically batches inserts with add_all()
                 session.add_all(embeddings_to_insert)
 
-                logging.info(f"Added {len(embeddings_to_insert)} embeddings to the database.")
+                logging.info(f"Added {len(embeddings_to_insert)} embedding(s) to the database.")
 
     except IntegrityError as integrity_excep:
         session.rollback()  # Rollback if an unexpected integrity error occurs

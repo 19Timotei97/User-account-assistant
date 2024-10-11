@@ -40,7 +40,7 @@ services:
 
   celery:
     build: .
-    command: celery -A celery_config.tasks.celery worker --loglevel=info
+    command: celery -A core.celery_app.celery worker --loglevel=info
     depends_on:
       db:
         condition: service_healthy

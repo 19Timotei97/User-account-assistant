@@ -14,7 +14,7 @@ from typing import Generator
 
 
 """
-This script defines the engine and session for database operations.
+This module defines the engine and session for database operations.
 It also creates the database tables based on the defined models.
 
 It defines the 'get_db_session' method for returning a database session, which is used in the routes.

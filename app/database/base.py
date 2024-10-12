@@ -78,6 +78,8 @@ def get_db_session() -> Generator[Session, None, None]:
     try:
         # Retrieve and commit transactions
         yield db_session # Yield control to the block inside the 'with' statement
+
+        logging.info("Committing database operation")
         db_session.commit()
         
     except Exception as session_excep:
@@ -89,6 +91,8 @@ def get_db_session() -> Generator[Session, None, None]:
         raise session_excep
     
     finally:
+        logging.info("Closing and removing the database session")
+
         # Close and remove the session
         db_session.close()
 

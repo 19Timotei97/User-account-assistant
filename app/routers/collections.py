@@ -1,3 +1,5 @@
+import logging
+
 # Package imports
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
@@ -23,6 +25,9 @@ Some work could be done in improving the user experience in managing collections
 """
 
 
+# Set the logging config
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 # Define the FastAPI router to bind collections routes
 router = APIRouter()
 
@@ -35,6 +40,8 @@ async def create_collection(collection: Collection, token: TokenData = Depends(g
     :param collection: The collection object to be created.
     :return: The created collection object.
     """
+    logging.info(f"Creating a new collection named '{collection.name}'")
+
     return await add_collection_to_db(collection)
 
 
@@ -46,9 +53,12 @@ async def get_collection_by_name(collection_name: str, token: TokenData = Depend
     :param collection_name: The name of the collection to retrieve.
     :return: The retrieved collection object.
     """
+    logging.info(f"Retrieving collection named '{collection_name}'...")
+
     collection = await get_collection_from_db(collection_name)
     
     if not collection:
+        logging.error(f"Collection {collection_name} not found")
         raise HTTPException(status_code=404, detail="Collection not found")
     
     return collection
@@ -63,18 +73,22 @@ async def get_collections(limit: int = 10, token: TokenData = Depends(get_token)
     :param offset: The number of collections to skip.
     :return: A list of collection objects.
     """
+    logging.info("Retrieving collections...")
+
     return await get_collections_from_db(limit)
 
 
 @router.put("/collections", response_model=Collection)
-async def update_collection(collection: Collection, token: TokenData = Depends(get_token)):
+async def update_collection(collection: Collection, new_collection_name: str, token: TokenData = Depends(get_token)):
     """
     FastAPI router method to update a collection.
 
     :param collection: The collection object to be updated.
     :return: The updated collection object.
     """
-    return await update_collection_in_db(collection)
+    logging.info(f"Updating '{collection.name}' to {new_collection_name}...")
+
+    return await update_collection_in_db(collection.name, new_collection_name)
 
 
 @router.delete("/collections/{collection_name}")
@@ -85,6 +99,6 @@ async def delete_collection(collection_name: str, token: TokenData = Depends(get
     :param collection_name: The name of the collection to be deleted.
     :return: A success message.
     """
-    await delete_collection_from_db(collection_name)
+    logging.info(f"Deleting '{collection_name}'...")
     
-    return {"message": "Collection deleted successfully"}
+    return await delete_collection_from_db(collection_name)

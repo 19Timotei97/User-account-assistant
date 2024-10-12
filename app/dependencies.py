@@ -28,15 +28,18 @@ def get_token(request: Request) -> TokenData:
         auth_header = request.headers.get("Authorization")
         
         if not auth_header:
+            logging.error("Authorization header missing")
             raise HTTPException(status_code=401, detail="Authorization header missing")
         
         scheme, _, token = auth_header.partition(" ")
         
         # Ensure the Authentication header is ok
         if scheme.lower() != "bearer":
+            logging.error("Invalid authentication scheme")
             raise HTTPException(status_code=401, detail="Invalid authentication scheme")
         
         if not token:
+            logging.error("Token missing")
             raise HTTPException(status_code=401, detail="Token missing")
         
         return verify_access_token(

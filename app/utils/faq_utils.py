@@ -35,8 +35,12 @@ def retrieve_locally_stored_FAQ() -> list:
     """
     Retrieves the locally stored FAQ database.
 
-    :return: A list of dictionaries containing the FAQ data.
-    """    
+    :return: A list of dictionaries containing the FAQ data or an empty list if an error occurs.
+    """
+    faq_local_database = []
+
+    logging.info("Retrieving locally stored FAQ database...")
+
     faq_json_file = os.path.join(os.path.dirname(__file__), 'FAQ_database.json')
     
     faq_local_database_loader = FAQ_Loader(faq_json_file=faq_json_file, limit=100)
@@ -72,8 +76,11 @@ class FAQ_Loader:
                 faqs = json.load(faq_data)
 
             if self.limit is not None:
+                logging.info(f"Loading up to {self.limit} FAQ entries...")
                 faqs = faqs['faqs'][:self.limit]
+
             else:
+                logging.info("Loading all FAQ entries...")
                 faqs = faqs['faqs']
 
             return faqs

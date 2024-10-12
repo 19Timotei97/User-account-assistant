@@ -2,6 +2,7 @@ import logging
 
 # Package imports
 from celery import Celery
+from celery.signals import worker_ready
 
 # Local files imports
 from .config import get_settings
@@ -43,4 +44,10 @@ celery.conf.update(
 celery.autodiscover_tasks(['database.manage_database'])
 
 # Log the Celery initialization
-logging.info("Celery application started with broker: %s", broker_url)
+logging.info(f"Celery application started with broker '{broker_url}'...")
+
+
+# Log when the worker is fully connected and ready
+@worker_ready.connect
+def worker_ready_handler(sender=None, **kwargs):
+    logging.info("Celery worker is fully connected and ready to process tasks.")

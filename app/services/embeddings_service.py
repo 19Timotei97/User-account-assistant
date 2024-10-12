@@ -42,7 +42,7 @@ def limit_token_length(text: str, max_tokens: int = 2000) -> str:
     tokens = encoding.encode(text)
 
     if len(tokens) > max_tokens:
-        logging.warning("The provided text exceeds 2000 tokens!")
+        logging.warning("The provided text exceeds 2000 tokens! Limiting token length...")
         
         logging.info(f"Truncating text to {max_tokens} tokens.")
 
@@ -50,6 +50,9 @@ def limit_token_length(text: str, max_tokens: int = 2000) -> str:
         limited_text = encoding.decode(limited_tokens)
 
         return limited_text
+    
+    else:
+        logging.info(f"The text's {len(tokens)} tokens is within the token limit")
     
     return text
 
@@ -109,6 +112,7 @@ class OpenAIEmbeddingsService(EmbeddingsService):
             openai_api_key = settings.openai_api_key
 
             if not openai_api_key:
+                logging.error("OPENAI_API_KEY environment variable is not set!")
                 raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")
 
             # Catch errors that may occur during OpenAI embeddings model init
@@ -117,6 +121,7 @@ class OpenAIEmbeddingsService(EmbeddingsService):
                     model=model,
                     api_key=openai_api_key
                 )
+
             except Exception as embeddings_excep:
                 logging.error(f"Error while initializing OpenAIEmbeddingsService: {embeddings_excep}")
                 raise embeddings_excep
@@ -135,12 +140,16 @@ class OpenAIEmbeddingsService(EmbeddingsService):
         :return: The embedding for the given text.
         """
         if text in self.cache:
+            logging.info(f"Embedding for text {text} found in cache.")
+
             return self.cache[text]
         
         # Ensure the text is not over a certain limit length
         text = limit_token_length(text)
 
         try:
+            logging.info(f"Computing embedding for text '{text}'...")
+
             # Embed the text if not found in the cache
             text_embedding = self.embeddings_model.embed_query(text)
         
@@ -175,4 +184,6 @@ class OpenAIEmbeddingsService(EmbeddingsService):
         """
         Clears the cache of computed embeddings.
         """
+        logging.info("Clearing OpenAIEmbeddingsService cache...")
+
         self.cache.clear()

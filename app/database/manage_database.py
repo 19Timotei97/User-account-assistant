@@ -199,20 +199,28 @@ def add_embedding_to_db(content: str, answer: str, collection: str) -> None:
     return
 
 
-@celery.task
-def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
+@celery.task(bind=True, max_retries=5, default_retry_delay=60)
+def add_embeddings_to_db(self, items: List[Tuple[str, str, str]]) -> None:
     """
     Adds embeddings to the database in batches, specified by the batch size Pydantic setting.
     It handles large batches by splitting them into smaller chunks.
     It checks if the embedding already exists in the database before inserting it.
-    The @celery.task decorator is used to make this function a Celery task, allowing it to be executed asynchronously.
 
+    The @celery.task decorator is used to make this function a Celery task, allowing it to be executed asynchronously.
+    There is also a retry mechanism with a delay between retries in case of database errors or unexpected exceptions.
+    It makes use of celery's _task_ _binding_ to give access to the task's `metadata`, retry management and error handling.
+
+    :param self: The Celery task instance.
     :param items: A list of tuples containing the content (question), answer and collection for each embedding.
     :return: None
     """
     if not items or 0 == len(items):
         logging.error("No items provided to add embeddings.")
-        raise ValueError("Items cannot be empty.")
+        raise ValueError("Items list cannot be empty.")
+    
+    # Add a check to see if the task has somehow failed 2 times
+    if self.request.retries > 2:
+        logging.warning("Tried adding embeddings more than twice!")
 
     try:
         # Run the SQL query using the local Session
@@ -275,13 +283,16 @@ def add_embeddings_to_db(items: List[Tuple[str, str, str]]) -> None:
     return
 
 
-@celery.task
-def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
+@celery.task(bind=True, max_retries=5, default_retry_delay=60)
+def update_embeddings_in_db(self, items: List[Tuple[str, str, str]]) -> None:
     """
     Updates the embeddings in the database in batches, using the batch size Pydantic setting.
     It handles large batches by splitting them into smaller chunks.
     It checks if the embedding already exists in the database before updating it.
+
     The @celery.task decorator is used to make this function a Celery task, allowing it to be executed asynchronously.
+    There is also a retry mechanism with a delay between retries in case of database errors or unexpected exceptions.
+    It makes use of celery's _task_ _binding_ to give access to the task's `metadata`, retry management and error handling.
 
     :param items: A list of tuples containing the content (question), answer and collection for each embedding.
     :return: None
@@ -289,6 +300,10 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
     if not items or 0 == len(items):
         logging.error("No items provided to update embeddings.")
         raise ValueError("Items cannot be empty.")
+    
+    # Add a check to see if the task has somehow failed 2 times
+    if self.request.retries > 2:
+        logging.warning("Tried updating embeddings more than twice!")
 
     try:
         # Run the SQL query using the local Session
@@ -310,6 +325,9 @@ def update_embeddings_in_db(items: List[Tuple[str, str, str]]) -> None:
                         # Update the in-memory object
                         existing_embedding.embedding = embedding
                         existing_embedding.answer = answer
+
+                        logging.info(f"Updated '{content}'s embedding.")
+
                     else:
                         logging.info(f"Cannot update embedding for content '{content}' because it does not exist in collection '{collection}'!")
                         return
@@ -405,7 +423,7 @@ def search_for_similarity_in_db(
             # Retrieve the similarity score
             similarity_score = result['similarity']
 
-            logging.info(f"Similarity score: {similarity_score} for content {similar_embedding.content}")
+            logging.info(f"Similarity score: {similarity_score:.2f} for content '{similar_embedding.content}'")
             
             return similar_embedding, similarity_score
     

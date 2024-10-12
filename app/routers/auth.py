@@ -49,6 +49,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         user = authenticate_user(form_data.username, form_data.password)
 
         if not user:
+            logging.error(f"Authentication failed for user: {form_data.username}")
             raise AuthenticationError("Incorrect username or password")
         
         if not user:

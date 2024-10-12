@@ -43,8 +43,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         
         # We can either use the expiration delta or use the one defined in the .env file
         if expires_delta:
+            logging.info("Using the provided expiration delta")
             expire = datetime.now(timezone.utc) + expires_delta
         else:
+            logging.info("Using the default expiration delta from the environment")
             expire = datetime.now(timezone.utc) + timedelta(minutes=int(settings.access_token_expire_minutes))
         
         #  Set token expiration
@@ -55,6 +57,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         algorithm = settings.algorithm
 
         if not secret_key or not algorithm:
+            logging.error("SECRET_KEY or ALGORITHM is not set in the environment")
             raise ValueError("SECRET_KEY or ALGORITHM is not set in the environment")
 
         encoded_jwt = jwt.encode(

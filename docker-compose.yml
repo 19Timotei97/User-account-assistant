@@ -42,8 +42,6 @@ services:
     build: .
     command: celery -A core.celery_app.celery worker --loglevel=info
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     env_file:

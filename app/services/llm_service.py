@@ -66,6 +66,7 @@ class OpenAI_Responder(Responder):
         self.openai_api_key = settings.openai_api_key
 
         if not self.openai_api_key:
+            logging.error("OPENAI_API_KEY environment variable is not set!")
             raise EnvironmentError("OPENAI_API_KEY environment variable is not set!")
 
         self.model_name = model_name

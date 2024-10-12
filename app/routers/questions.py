@@ -57,6 +57,7 @@ async def ask_question_page(request: Request) -> HTMLResponse:
     :return: The rendered HTML template for the question page.
     """
     try:
+        logging.info("Rendering question page")
         return templates.TemplateResponse("question.html", {"request": request})
     
     except Exception as question_render_excep:
@@ -83,6 +84,7 @@ async def ask_question(
     :return: The response data containing the matched question and answer.
     """
     if not user_question:
+        logging.error("No user question provided")
         return HTTPException(status_code=400, detail="No question provided")
 
     try:
@@ -90,9 +92,11 @@ async def ask_question(
 
         # Retrieve the initial collection name
         faq_collection_name = get_faq_collection_name()
+        logging.info(f"FAQ collection name: {faq_collection_name}")
 
         # Get an embedding of the user's question
         question_embedding = embeddings_service.compute_embedding(user_question_str_representation)
+        logging.info(f"Question embedding computed with dimension {len(question_embedding)}")
 
         # Perform similarity search in the database using the pgvector extension
         most_similar_embedding, similarity_score = search_for_similarity_in_db(
@@ -104,6 +108,8 @@ async def ask_question(
         if most_similar_embedding:
             # Check to see if the similarity is at least equal to the threshold
             if similarity_score >= similarity_threshold:
+                logging.info("Similar content found, using the local FAQ database...")
+
                 # Create the required response structure and return it
                 response_data = QuestionResponse(
                     source="local",
@@ -121,6 +127,8 @@ async def ask_question(
                 )
 
             else:
+                logging.info(f"Content similar to '{user_question_str_representation}' not found, using the OpenAI responder...")
+
                 # If the similarity is below the threshold, return the OpenAI response
                 openai_response = openai_responder.get_response(user_question_str_representation)
 

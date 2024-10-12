@@ -38,10 +38,16 @@ def get_openai_responder() -> OpenAI_Responder:
     
     :return: An instance of the OpenAI_Responder class.
     """
+    logging.info("Initializing OpenAI_Responder...")
+
     model_name = settings.openai_model_name
     max_tokens = int(settings.openai_model_max_tokens)
     n = int(settings.openai_model_n)
     temperature = float(settings.openai_model_temperature)
+
+    if any(param is None for param in [model_name, max_tokens, n, temperature]):
+        logging.error("One or more required parameters are missing in the environment variables.")
+        raise ValueError("One or more required parameters are missing in the environment variables.")
     
     return OpenAI_Responder(
         model_name=model_name, 
@@ -99,6 +105,10 @@ def store_initial_embeddings() -> None:
     :return: None
     """
     faq_local_database = retrieve_locally_stored_FAQ()
+
+    if len(faq_local_database) == 0:
+        logging.error("No FAQ database found!")
+        return
     
     faq_embeddings = [(item['question'], item['answer'], get_faq_collection_name()) for item in faq_local_database]
     
